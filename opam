@@ -14,5 +14,6 @@ remove: [make "uninstall"]
 depends: [
   "ocamlfind" {build}
   "ounit" {test}
+  "ppx_deriving"
 ]
 available: [ocaml-version >= "4.02.0"]
