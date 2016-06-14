@@ -1,0 +1,18 @@
+opam-version: "1.2"
+maintainer: "Etienne Millon <etienne@cryptosense.com>"
+authors: "Etienne Millon <etienne@cryptosense.com>"
+homepage: "https://github.com/cryptosense/multipart-form-data"
+bug-reports: "https://github.com/cryptosense/multipart-form-data/issues"
+license: "BSD-2"
+dev-repo: "https://github.com/cryptosense/multipart-form-data.git"
+build: [
+    [make "build"]
+]
+install: [make "install"]
+build-test: [make "check"]
+remove: [make "uninstall"]
+depends: [
+  "ocamlfind" {build}
+  "ounit" {test}
+]
+available: [ocaml-version >= "4.02.0"]
