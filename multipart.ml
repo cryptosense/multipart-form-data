@@ -43,7 +43,6 @@ let word = function
   | w -> [Word w]
 
 let split_and_process_string ~boundary s =
-  let open Lwt.Infix in
   let re = Str.regexp_string boundary in
   let rec go start acc =
     try
@@ -96,9 +95,9 @@ let split s boundary =
   Lwt_stream.append initial final
 
 let until_next_delim s =
-  let open Lwt.Infix in
   Lwt_stream.from @@ fun () ->
-  Lwt_stream.get s >>= function
+  let%lwt res = Lwt_stream.get s in
+  match res with
   | None
   | Some Delim -> Lwt.return_none
   | Some (Word w) -> Lwt.return_some w
@@ -153,16 +152,14 @@ let parse_header s =
   s
 
 let non_empty st =
-  let open Lwt.Infix in
-  Lwt_stream.to_list (Lwt_stream.clone st) >>= fun r ->
+  let%lwt r = Lwt_stream.to_list @@ Lwt_stream.clone st in
   Lwt.return (String.concat "" r <> "")
 
 let get_headers : string Lwt_stream.t Lwt_stream.t -> header list Lwt.t
   = fun lines ->
-  let open Lwt.Infix in
-  (Lwt_stream.get_while_s non_empty lines) >>= fun header_lines ->
+  let%lwt header_lines = Lwt_stream.get_while_s non_empty lines in
   Lwt_list.map_s (fun header_line_stream ->
-      Lwt_stream.to_list header_line_stream >>= fun parts ->
+      let%lwt parts = Lwt_stream.to_list header_line_stream in
       Lwt.return @@ parse_header @@ String.concat "" parts
     ) header_lines
 
@@ -172,8 +169,7 @@ type stream_part =
   }
 
 let debug_stream_part {body;headers} =
-  let open Lwt.Infix in
-  Lwt_stream.to_list body >>= fun body_chunks ->
+  let%lwt body_chunks = Lwt_stream.to_list body in
   Lwt.return @@
   Printf.sprintf
     "headers : %s\nbody: %s\n"
@@ -181,19 +177,16 @@ let debug_stream_part {body;headers} =
     (String.concat "" body_chunks)
 
 let debug_stream sps =
-  let open Lwt.Infix in
-  Lwt_list.map_s debug_stream_part sps >>= fun parts ->
+  let%lwt parts = Lwt_list.map_s debug_stream_part sps in
   Lwt.return @@ String.concat "--\n" parts
 
 let parse_part chunk_stream =
-  let open Lwt.Infix in
   let lines = join @@ split chunk_stream "\r\n" in
-  get_headers lines >>= fun headers ->
+  let%lwt headers = get_headers lines in
   let body = Lwt_stream.concat @@ Lwt_stream.clone lines in
   Lwt.return { headers ; body }
 
 let parse_stream ~stream ~content_type =
-  let open Lwt.Infix in
   match extract_boundary content_type with
   | None -> Lwt.fail_with "Cannot parse content-type"
   | Some boundary ->
@@ -244,21 +237,19 @@ type part =
 type parts = part StringMap.t
 
 let as_part part =
-  let open Lwt.Infix in
   match s_part_filename part with
   | Some filename ->
       Lwt.return (File part)
   | None ->
-    Lwt_stream.to_list part.body >>= fun chunks ->
+    let%lwt chunks = Lwt_stream.to_list part.body in
     let body = String.concat "" chunks in
     Lwt.return (Text body)
 
 let get_parts s =
-  let open Lwt.Infix in
   let go part m =
     try
       let name = s_part_name part in
-      as_part part >>= fun parsed_part ->
+      let%lwt parsed_part = as_part part in
       Lwt.return @@ StringMap.add name parsed_part m
     with Invalid_argument _ ->
       Lwt.return m

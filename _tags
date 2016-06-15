@@ -2,4 +2,5 @@ true: debug
 true: package(str)
 true: package(lwt)
 true: package(ppx_deriving.std)
+true: package(lwt.ppx)
 <tests.*>: package(oUnit), package(lwt.unix)
