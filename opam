@@ -17,4 +17,4 @@ depends: [
   "ppx_deriving"
   "lwt"
 ]
-available: [ocaml-version >= "4.02.0"]
+available: [ocaml-version >= "4.01.0"]
