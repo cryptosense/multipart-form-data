@@ -95,15 +95,6 @@ let split s boundary =
   in
   Lwt_stream.append initial final
 
-let scan f z s =
-  let state = ref z in
-  let go x =
-    let (y, new_state) = f x (!state) in
-    state := new_state;
-    y
-  in
-  Lwt_stream.map go s
-
 let until_next_delim s =
   let open Lwt.Infix in
   Lwt_stream.from @@ fun () ->
@@ -123,17 +114,6 @@ let split_join stream boundary =
 
 type header = string
   [@@deriving show]
-
-type part = { p_headers : header list
-            ; p_body : string
-            }
-  [@@deriving show]
-
-let debug m = StringMap.fold (fun k v s ->
-    Printf.sprintf "%s => %s\n%s" k ([%show: part] v) s
-  ) m ""
-
-type t = part StringMap.t
 
 module List_infix = struct
   let (>>=) xo f = match xo with
@@ -162,17 +142,6 @@ let parse_name s =
   let open List_infix in
   after_prefix ~prefix:"Content-Disposition: form-data; name=" s >>= fun x ->
   return @@ unquote x
-
-let num_parts parts = StringMap.cardinal parts
-
-let get_part m name =
-  try
-    Some (StringMap.find name m)
-  with
-  | Not_found -> None
-
-let part_body { p_body } =
-  p_body
 
 let part_names m =
   StringMap.fold
@@ -244,21 +213,57 @@ let s_part_body {body} = body
 
 let s_part_name {headers} = get_name_from_part headers
 
-let parse ~body ~content_type =
+let parse_regexp regexp s =
+  if Str.string_match regexp s 0 then
+    Some (Str.matched_group 1 s)
+  else None
+
+let parse_filename =
+  parse_regexp @@ Str.regexp {|^Content-Disposition: form-data; name=".*"; filename="\(.*\)"|}
+
+let s_part_filename {headers} =
+  first_matching parse_filename headers
+
+type file = stream_part
+
+let file_stream = s_part_body
+let file_name = s_part_name
+
+let parse_content_type =
+  parse_regexp @@ Str.regexp {|^Content-Type: \(.*\)|}
+
+let file_content_type {headers} =
+  match first_matching parse_content_type headers with
+  | Some x -> x
+  | None -> invalid_arg "file_content_type"
+
+type part =
+  | Text of string
+  | File of file
+
+type parts = part StringMap.t
+
+let as_part part =
   let open Lwt.Infix in
-  let stream = Lwt_stream.of_list [body] in
-  let thread =
-    parse_stream ~stream ~content_type >>= fun stream ->
-    Lwt_stream.to_list stream >>= fun parts ->
-    Lwt_list.fold_left_s (fun m { headers ; body } ->
-        Lwt_stream.to_list body >>= fun body_chunks ->
-        let p_body = String.concat "" body_chunks in
-        if headers = [] && p_body = "" then
-          Lwt.return m
-        else
-          let name = get_name_from_part headers in
-          let part = { p_headers = headers ; p_body } in
-          Lwt.return @@ StringMap.add name part m
-      ) StringMap.empty parts
+  match s_part_filename part with
+  | Some filename ->
+      Lwt.return (File part)
+  | None ->
+    Lwt_stream.to_list part.body >>= fun chunks ->
+    let body = String.concat "" chunks in
+    Lwt.return (Text body)
+
+let get_parts s =
+  let open Lwt.Infix in
+  let go part m =
+    try
+      let name = s_part_name part in
+      as_part part >>= fun parsed_part ->
+      Lwt.return @@ StringMap.add name parsed_part m
+    with Invalid_argument _ ->
+      Lwt.return m
   in
-  Some (Lwt_main.run thread)
+  Lwt_stream.fold_s go s StringMap.empty
+
+let get_part m name =
+  StringMap.find name m

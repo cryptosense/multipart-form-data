@@ -21,30 +21,23 @@ let test_parse ctxt =
       ]
   in
   let content_type = "multipart/form-data; boundary=------------------------1605451f456c9a1a" in
-  let m =
-    match Multipart.parse ~body ~content_type with
-    | Some x -> x
-    | None -> assert_failure "expected a result for parse"
-  in
-  assert_equal
-    ~ctxt
-    ~printer:[%show: int]
-    ~msg:(Printf.sprintf "part names = %s" ([%show: string list] (Multipart.part_names m)))
-    3
-    (Multipart.num_parts m);
-  let get_partx name =
-    match Multipart.get_part m name with
-    | Some x -> x
-    | None -> assert_failure ("expected a result for get_part")
-  in
-  let part_a = get_partx "a" in
-  assert_equal ~ctxt ~printer:[%show: string]
-    ~msg:(Multipart.debug m)
-    "b" (Multipart.part_body part_a);
-  let part_c = get_partx "c" in
-  assert_equal ~ctxt ~printer:[%show: string] "d" (Multipart.part_body part_c);
-  let part_upload = get_partx "upload" in
-  assert_equal ~ctxt ~printer:[%show: string] "testfilecontent" (Multipart.part_body part_upload)
+  let stream = Lwt_stream.of_list [body] in
+  Lwt_main.run @@
+    let open Lwt.Infix in
+    Multipart.parse_stream ~stream ~content_type >>= fun parts_stream ->
+    Multipart.get_parts parts_stream >>= fun parts ->
+    assert_equal (Multipart.Text "b") (Multipart.get_part parts "a");
+    assert_equal (Multipart.Text "d") (Multipart.get_part parts "c");
+    match Multipart.get_part parts "upload" with
+    | Multipart.Text _ -> assert_failure "expected a file"
+    | Multipart.File file ->
+      begin
+        assert_equal ~ctxt ~printer:[%show: string] "upload" (Multipart.file_name file);
+        assert_equal ~ctxt "application/octet-stream" (Multipart.file_content_type file);
+        Lwt_stream.to_list (Multipart.file_stream file) >>= fun file_chunks ->
+        assert_equal ~ctxt "testfilecontent" (String.concat "" file_chunks);
+        Lwt.return_unit
+      end
 
 let test_split ctxt =
   let in_stream =
