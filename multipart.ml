@@ -166,9 +166,11 @@ let debug_stream sps =
 
 let parse_part chunk_stream =
   let lines = align chunk_stream "\r\n" in
-  let%lwt headers = get_headers lines in
-  let body = Lwt_stream.concat @@ Lwt_stream.clone lines in
-  Lwt.return { headers ; body }
+  match%lwt get_headers lines with
+  | [] -> Lwt.return_none
+  | headers ->
+    let body = Lwt_stream.concat @@ Lwt_stream.clone lines in
+    Lwt.return_some { headers ; body }
 
 let parse_stream ~stream ~content_type =
   match extract_boundary content_type with
@@ -176,23 +178,17 @@ let parse_stream ~stream ~content_type =
   | Some boundary ->
     begin
       let actual_boundary = ("--" ^ boundary) in
-      Lwt.return @@ Lwt_stream.map_s parse_part @@ align stream actual_boundary
+      Lwt.return @@ Lwt_stream.filter_map_s parse_part @@ align stream actual_boundary
     end
 
-let get_name_from_part headers =
-  let err () =
-    invalid_arg (Printf.sprintf "get_name_from_part , headers = %s" ([%show: header list] headers))
-  in
+let s_part_body {body} = body
+
+let s_part_name {headers} =
   match
     parse_name @@ List.assoc "Content-Disposition" headers
   with
   | Some x -> x
-  | None -> err ()
-  | exception Not_found -> err ()
-
-let s_part_body {body} = body
-
-let s_part_name {headers} = get_name_from_part headers
+  | None -> invalid_arg "s_part_name"
 
 let parse_regexp regexp s =
   if Str.string_match regexp s 0 then
@@ -224,11 +220,8 @@ let as_part part =
 
 let get_parts s =
   let go part m =
-    try
-      let name = s_part_name part in
-      let%lwt parsed_part = as_part part in
-      Lwt.return @@ StringMap.add name parsed_part m
-    with Invalid_argument _ ->
-      Lwt.return m
+    let name = s_part_name part in
+    let%lwt parsed_part = as_part part in
+    Lwt.return @@ StringMap.add name parsed_part m
   in
   Lwt_stream.fold_s go s StringMap.empty
