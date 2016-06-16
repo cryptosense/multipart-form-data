@@ -25,11 +25,11 @@ let test_parse ctxt =
   let thread =
     let%lwt parts_stream = Multipart.parse_stream ~stream ~content_type in
     let%lwt parts = Multipart.get_parts parts_stream in
-    assert_equal (Multipart.Text "b") (Multipart.StringMap.find "a" parts);
-    assert_equal (Multipart.Text "d") (Multipart.StringMap.find "c" parts);
+    assert_equal (`String "b") (Multipart.StringMap.find "a" parts);
+    assert_equal (`String "d") (Multipart.StringMap.find "c" parts);
     match Multipart.StringMap.find "upload" parts with
-    | Multipart.Text _ -> assert_failure "expected a file"
-    | Multipart.File file ->
+    | `String _ -> assert_failure "expected a file"
+    | `File file ->
       begin
         assert_equal ~ctxt ~printer:[%show: string] "upload" (Multipart.file_name file);
         assert_equal ~ctxt "application/octet-stream" (Multipart.file_content_type file);

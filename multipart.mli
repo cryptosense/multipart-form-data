@@ -19,10 +19,6 @@ val file_name : file -> string
 val file_content_type : file -> string
 val file_stream : file -> string Lwt_stream.t
 
-type part =
-  | Text of string
-  | File of file
-
 module StringMap : Map.S with type key = string
 
-val get_parts : stream_part Lwt_stream.t -> part StringMap.t Lwt.t
+val get_parts : stream_part Lwt_stream.t -> [`String of string | `File of file] StringMap.t Lwt.t

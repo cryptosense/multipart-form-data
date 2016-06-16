@@ -1,10 +1,5 @@
 module StringMap = Map.Make(String)
 
-type 'a res =
-  | Word of 'a
-  | Delim
-  [@@deriving show]
-
 let ends_with ~suffix s =
   let suffix_length = String.length suffix in
   let s_length = String.length s in
@@ -40,7 +35,7 @@ let find_common a b =
 
 let word = function
   | "" -> []
-  | w -> [Word w]
+  | w -> [`Word w]
 
 let split_and_process_string ~boundary s =
   let re = Str.regexp_string boundary in
@@ -48,7 +43,7 @@ let split_and_process_string ~boundary s =
     try
       let match_start = Str.search_forward re s start in
       let before = String.sub s start (match_start - start) in
-      let new_acc = Delim::(word before)@acc in
+      let new_acc = `Delim::(word before)@acc in
       let new_start = match_start + String.length boundary in
       go new_start new_acc
     with
@@ -99,13 +94,13 @@ let until_next_delim s =
   let%lwt res = Lwt_stream.get s in
   match res with
   | None
-  | Some Delim -> Lwt.return_none
-  | Some (Word w) -> Lwt.return_some w
+  | Some `Delim -> Lwt.return_none
+  | Some (`Word w) -> Lwt.return_some w
 
 let join s =
   Lwt_stream.filter_map (function
-      | Delim -> Some (until_next_delim @@ Lwt_stream.clone s)
-      | Word _ -> None
+      | `Delim -> Some (until_next_delim @@ Lwt_stream.clone s)
+      | `Word _ -> None
     ) s
 
 let align stream boundary =
@@ -227,18 +222,14 @@ let file_name = s_part_name
 let file_content_type {headers} =
   List.assoc "Content-Type" headers
 
-type part =
-  | Text of string
-  | File of file
-
 let as_part part =
   match s_part_filename part with
   | Some filename ->
-      Lwt.return (File part)
+      Lwt.return (`File part)
   | None ->
     let%lwt chunks = Lwt_stream.to_list part.body in
     let body = String.concat "" chunks in
-    Lwt.return (Text body)
+    Lwt.return (`String body)
 
 let get_parts s =
   let go part m =
