@@ -13,10 +13,6 @@ val s_part_filename : stream_part -> string option
 
 val parse_stream : stream:string Lwt_stream.t -> content_type:string -> stream_part Lwt_stream.t Lwt.t
 
-type parts
-
-val get_parts : stream_part Lwt_stream.t -> parts Lwt.t
-
 type file
 
 val file_name : file -> string
@@ -27,4 +23,6 @@ type part =
   | Text of string
   | File of file
 
-val get_part : parts -> string -> part
+module StringMap : Map.S with type key = string
+
+val get_parts : stream_part Lwt_stream.t -> part StringMap.t Lwt.t

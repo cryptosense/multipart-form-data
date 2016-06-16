@@ -142,12 +142,6 @@ let parse_name s =
   after_prefix ~prefix:"form-data; name=" s >>= fun x ->
   return @@ unquote x
 
-let part_names m =
-  StringMap.fold
-    (fun k _ l -> k::l)
-    m
-    []
-
 let parse_header s =
   let regexp = Str.regexp_string ": " in
   let colon_pos = Str.search_forward regexp s 0 in
@@ -237,8 +231,6 @@ type part =
   | Text of string
   | File of file
 
-type parts = part StringMap.t
-
 let as_part part =
   match s_part_filename part with
   | Some filename ->
@@ -258,6 +250,3 @@ let get_parts s =
       Lwt.return m
   in
   Lwt_stream.fold_s go s StringMap.empty
-
-let get_part m name =
-  StringMap.find name m
