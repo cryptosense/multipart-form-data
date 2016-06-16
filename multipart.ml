@@ -27,6 +27,10 @@ let rec first_matching p = function
       | None -> first_matching p xs
     end
 
+let option_map f = function
+  | None -> None
+  | Some x -> Some (f x)
+
 let find_common a b =
   let p suffix =
     ends_with ~suffix a
@@ -83,9 +87,7 @@ let split s boundary =
   let final =
     Lwt_stream.flatten @@
     Lwt_stream.from_direct @@ fun () ->
-    match pop () with
-    | None -> None
-    | Some x -> Some (split_and_process_string ~boundary x)
+    option_map (split_and_process_string ~boundary) @@ pop ()
   in
   Lwt_stream.append initial final
 
@@ -109,20 +111,11 @@ let align stream boundary =
 type header = string * string
   [@@deriving show]
 
-module List_infix = struct
-  let (>>=) xo f = match xo with
-    | None -> None
-    | Some x -> f x
-
-  let return x = Some x
-end
-
 let after_prefix ~prefix str =
-  let open List_infix in
   let prefix_len = String.length prefix in
   let str_len = String.length str in
   if (str_len >= prefix_len && Str.first_chars str prefix_len = prefix) then
-    return @@ Str.string_after str prefix_len
+    Some (Str.string_after str prefix_len)
   else
     None
 
@@ -133,9 +126,7 @@ let unquote s =
   Scanf.sscanf s "%S" @@ (fun x -> x);;
 
 let parse_name s =
-  let open List_infix in
-  after_prefix ~prefix:"form-data; name=" s >>= fun x ->
-  return @@ unquote x
+  option_map unquote @@ after_prefix ~prefix:"form-data; name=" s
 
 let parse_header s =
   let regexp = Str.regexp_string ": " in
