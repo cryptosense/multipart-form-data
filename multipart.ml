@@ -111,7 +111,7 @@ let join s =
 let align stream boundary =
   join @@ split stream boundary
 
-type header = string
+type header = string * string
   [@@deriving show]
 
 module List_infix = struct
@@ -139,7 +139,7 @@ let unquote s =
 
 let parse_name s =
   let open List_infix in
-  after_prefix ~prefix:"Content-Disposition: form-data; name=" s >>= fun x ->
+  after_prefix ~prefix:"form-data; name=" s >>= fun x ->
   return @@ unquote x
 
 let part_names m =
@@ -149,7 +149,11 @@ let part_names m =
     []
 
 let parse_header s =
-  s
+  let regexp = Str.regexp_string ": " in
+  let colon_pos = Str.search_forward regexp s 0 in
+  let key = Str.string_before s colon_pos in
+  let value = Str.string_after s (colon_pos + 2) in
+  (key, value)
 
 let non_empty st =
   let%lwt r = Lwt_stream.to_list @@ Lwt_stream.clone st in
@@ -196,11 +200,15 @@ let parse_stream ~stream ~content_type =
     end
 
 let get_name_from_part headers =
+  let err () =
+    invalid_arg (Printf.sprintf "get_name_from_part , headers = %s" ([%show: header list] headers))
+  in
   match
-    first_matching parse_name headers
+    parse_name @@ List.assoc "Content-Disposition" headers
   with
   | Some x -> x
-  | None -> invalid_arg (Printf.sprintf "get_name_from_part , headers = %s" ([%show: header list] headers))
+  | None -> err ()
+  | exception Not_found -> err ()
 
 let s_part_body {body} = body
 
@@ -212,23 +220,18 @@ let parse_regexp regexp s =
   else None
 
 let parse_filename =
-  parse_regexp @@ Str.regexp {|^Content-Disposition: form-data; name=".*"; filename="\(.*\)"|}
+  parse_regexp @@ Str.regexp {|^form-data; name=".*"; filename="\(.*\)"|}
 
 let s_part_filename {headers} =
-  first_matching parse_filename headers
+  parse_filename @@ List.assoc "Content-Disposition" headers
 
 type file = stream_part
 
 let file_stream = s_part_body
 let file_name = s_part_name
 
-let parse_content_type =
-  parse_regexp @@ Str.regexp {|^Content-Type: \(.*\)|}
-
 let file_content_type {headers} =
-  match first_matching parse_content_type headers with
-  | Some x -> x
-  | None -> invalid_arg "file_content_type"
+  List.assoc "Content-Type" headers
 
 type part =
   | Text of string
