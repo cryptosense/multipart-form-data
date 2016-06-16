@@ -108,7 +108,7 @@ let join s =
       | Word _ -> None
     ) s
 
-let split_join stream boundary =
+let align stream boundary =
   join @@ split stream boundary
 
 type header = string
@@ -181,7 +181,7 @@ let debug_stream sps =
   Lwt.return @@ String.concat "--\n" parts
 
 let parse_part chunk_stream =
-  let lines = join @@ split chunk_stream "\r\n" in
+  let lines = align chunk_stream "\r\n" in
   let%lwt headers = get_headers lines in
   let body = Lwt_stream.concat @@ Lwt_stream.clone lines in
   Lwt.return { headers ; body }
@@ -192,7 +192,7 @@ let parse_stream ~stream ~content_type =
   | Some boundary ->
     begin
       let actual_boundary = ("--" ^ boundary) in
-      Lwt.return @@ Lwt_stream.map_s parse_part @@ join @@ split stream actual_boundary
+      Lwt.return @@ Lwt_stream.map_s parse_part @@ align stream actual_boundary
     end
 
 let get_name_from_part headers =

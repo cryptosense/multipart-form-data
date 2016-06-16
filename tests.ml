@@ -60,18 +60,17 @@ let test_split ctxt =
     ; []
     ]
   in
-  let join_stream = Multipart.split_join in_stream "ABCDEF" in
-  let xss =
-    Lwt_main.run (
-      let%lwt streams = Lwt_stream.to_list join_stream in
-      Lwt_list.map_s Lwt_stream.to_list streams
-    )
-  in
-  assert_equal
-    ~ctxt
-    ~printer:[%show: string list list]
-    expected
-    xss
+  let stream = Multipart.align in_stream "ABCDEF" in
+  Lwt_main.run (
+    let%lwt streams = Lwt_stream.to_list stream in
+    let%lwt result = Lwt_list.map_s Lwt_stream.to_list streams in
+    assert_equal
+      ~ctxt
+      ~printer:[%show: string list list]
+      expected
+      result;
+    Lwt.return_unit
+  )
 
 let suite =
   "multipart-form-data" >:::

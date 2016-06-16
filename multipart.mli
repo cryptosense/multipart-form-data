@@ -1,4 +1,7 @@
-val split_join : string Lwt_stream.t -> string -> string Lwt_stream.t Lwt_stream.t
+(**
+   Align a stream on a particular sequence and remove these boundaries.
+ *)
+val align : string Lwt_stream.t -> string -> string Lwt_stream.t Lwt_stream.t
 
 type stream_part
 
