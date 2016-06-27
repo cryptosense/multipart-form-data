@@ -15,6 +15,7 @@ depends: [
   "ocamlfind" {build}
   "ounit" {test}
   "ppx_deriving"
+  "stringext"
   "lwt"
 ]
 available: [ocaml-version >= "4.02.0"]

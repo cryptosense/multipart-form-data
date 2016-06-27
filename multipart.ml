@@ -1,10 +1,12 @@
 module StringMap = Map.Make(String)
 
+let last_chars s n = String.sub s (String.length s - n) n
+
 let ends_with ~suffix s =
   let suffix_length = String.length suffix in
   let s_length = String.length s in
-  if s_length >= suffix_length && Str.last_chars s suffix_length = suffix then
-    let prefix = Str.first_chars s (s_length - suffix_length) in
+  if s_length >= suffix_length && last_chars s suffix_length = suffix then
+    let prefix = String.sub s 0 (s_length - suffix_length) in
     Some (prefix, suffix)
   else
     None
@@ -39,21 +41,28 @@ let find_common a b =
 
 let word = function
   | "" -> []
-  | w -> [`Word w]
+  | w -> [Some w]
 
-let split_and_process_string ~boundary s =
-  let re = Str.regexp_string boundary in
+let split_on_string ~pattern s =
+  let pattern_length = String.length pattern in
   let rec go start acc =
-    try
-      let match_start = Str.search_forward re s start in
+    match Stringext.find_from ~start s ~pattern with
+    | Some match_start ->
       let before = String.sub s start (match_start - start) in
-      let new_acc = `Delim::(word before)@acc in
-      let new_start = match_start + String.length boundary in
+      let new_acc = None::(word before)@acc in
+      let new_start = match_start + pattern_length in
       go new_start new_acc
-    with
-      Not_found -> (word (Str.string_after s start))@acc
+    | None ->
+      (word (Stringext.string_after s start))@acc
   in
   List.rev (go 0 [])
+
+let split_and_process_string ~boundary s =
+  let f = function
+    | None -> `Delim
+    | Some w -> `Word w
+  in
+  List.map f @@ split_on_string ~pattern:boundary s
 
 let split s boundary =
   let r = ref None in
@@ -111,29 +120,19 @@ let align stream boundary =
 type header = string * string
   [@@deriving show]
 
-let after_prefix ~prefix str =
-  let prefix_len = String.length prefix in
-  let str_len = String.length str in
-  if (str_len >= prefix_len && Str.first_chars str prefix_len = prefix) then
-    Some (Str.string_after str prefix_len)
-  else
-    None
-
 let extract_boundary content_type =
-  after_prefix ~prefix:"multipart/form-data; boundary=" content_type
+  Stringext.chop_prefix ~prefix:"multipart/form-data; boundary=" content_type
 
 let unquote s =
   Scanf.sscanf s "%S" @@ (fun x -> x);;
 
 let parse_name s =
-  option_map unquote @@ after_prefix ~prefix:"form-data; name=" s
+  option_map unquote @@ Stringext.chop_prefix ~prefix:"form-data; name=" s
 
 let parse_header s =
-  let regexp = Str.regexp_string ": " in
-  let colon_pos = Str.search_forward regexp s 0 in
-  let key = Str.string_before s colon_pos in
-  let value = Str.string_after s (colon_pos + 2) in
-  (key, value)
+  match Stringext.cut ~on:": " s with
+  | Some (key, value) -> (key, value)
+  | None -> invalid_arg "parse_header"
 
 let non_empty st =
   let%lwt r = Lwt_stream.to_list @@ Lwt_stream.clone st in
@@ -190,13 +189,18 @@ let s_part_name {headers} =
   | Some x -> x
   | None -> invalid_arg "s_part_name"
 
-let parse_regexp regexp s =
-  if Str.string_match regexp s 0 then
-    Some (Str.matched_group 1 s)
-  else None
-
-let parse_filename =
-  parse_regexp @@ Str.regexp {|^form-data; name=".*"; filename="\(.*\)"|}
+let parse_filename s =
+  let parts = split_on_string s ~pattern:"; " in
+  let f = function
+    | None -> None
+    | Some part ->
+      begin
+        match Stringext.cut part ~on:"=" with
+        | Some ("filename", quoted_string) -> Some (unquote quoted_string)
+        | _ -> None
+      end
+  in
+  first_matching f parts
 
 let s_part_filename {headers} =
   parse_filename @@ List.assoc "Content-Disposition" headers
