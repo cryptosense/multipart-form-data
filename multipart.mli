@@ -22,3 +22,9 @@ val file_stream : file -> string Lwt_stream.t
 module StringMap : Map.S with type key = string
 
 val get_parts : stream_part Lwt_stream.t -> [`String of string | `File of file] StringMap.t Lwt.t
+
+val parse :
+        stream:string Lwt_stream.t
+     -> content_type:string
+     -> callback:(name:string -> filename:string -> string -> unit Lwt.t)
+     -> (string * string) list Lwt.t
