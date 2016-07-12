@@ -13,7 +13,7 @@ let ends_with ~suffix s =
 
 let prefixes s =
   let rec go i =
-    if i < 0 then
+    if i <= 0 then
       []
     else
       (String.sub s 0 i)::go (i-1)
