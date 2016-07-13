@@ -320,6 +320,11 @@ let rec compute_case reader boundary =
           | None ->
             begin
               match find_common line boundary with
+              | Some ("", ambiguous) -> begin
+                Reader.unread reader ambiguous;
+                Reader.read_next reader >>
+                compute_case reader boundary
+              end
               | Some (unambiguous, ambiguous) -> Lwt.return @@ `May_end_with_boundary (unambiguous, ambiguous)
               | None -> Lwt.return @@ `App_data line
             end
