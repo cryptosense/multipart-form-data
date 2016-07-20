@@ -13,7 +13,7 @@ let ends_with ~suffix s =
 
 let prefixes s =
   let rec go i =
-    if i < 0 then
+    if i <= 0 then
       []
     else
       (String.sub s 0 i)::go (i-1)
@@ -229,3 +229,183 @@ let get_parts s =
     Lwt.return @@ StringMap.add name parsed_part m
   in
   Lwt_stream.fold_s go s StringMap.empty
+
+module Reader = struct
+  type t =
+    { mutable buffer : string
+    ; source : string Lwt_stream.t
+    }
+
+  let make stream =
+    { buffer = ""
+    ; source = stream
+    }
+
+  let unread r s =
+    r.buffer <- s ^ r.buffer
+
+  let empty r =
+    if r.buffer <> "" then
+      Lwt.return false
+    else
+      Lwt_stream.is_empty r.source
+
+  let read_next r =
+    let%lwt next_chunk = Lwt_stream.next r.source in
+    r.buffer <- r.buffer ^ next_chunk;
+    Lwt.return_unit
+
+  let read_chunk r =
+    try%lwt
+      let%lwt () =
+        if r.buffer = "" then
+          read_next r
+        else
+          Lwt.return_unit
+      in
+      let res = r.buffer in
+      r.buffer <- "";
+      Lwt.return (Some res)
+    with Lwt_stream.Empty ->
+      Lwt.return None
+
+  let buffer_contains r s =
+    match Stringext.cut r.buffer ~on:s with
+    | Some _ -> true
+    | None -> false
+
+  let rec read_until r cond =
+    if cond () then
+      Lwt.return_unit
+    else
+      begin
+        let%lwt () = read_next r in
+        read_until r cond
+      end
+
+  let read_line r =
+    let delim = "\r\n" in
+    let%lwt () = read_until r (fun () -> buffer_contains r delim) in
+    match Stringext.cut r.buffer ~on:delim with
+    | None -> assert false
+    | Some (line, next) ->
+      begin
+        r.buffer <- next;
+        Lwt.return (line ^ delim)
+      end
+end
+
+let read_headers reader =
+  let rec go headers =
+    let%lwt line = Reader.read_line reader in
+    if line = "\r\n" then
+      Lwt.return headers
+    else
+      let header = parse_header line in
+      go (header::headers)
+  in
+  go []
+
+let rec compute_case reader boundary =
+  match%lwt Reader.read_chunk reader with
+  | None -> Lwt.return `Empty
+  | Some line ->
+    begin
+      match Stringext.cut line ~on:(boundary ^ "\r\n") with
+      | Some (pre, post) -> Lwt.return @@ `Boundary (pre, post)
+      | None ->
+        begin
+          match Stringext.cut line ~on:(boundary ^ "--\r\n") with
+          | Some (pre, post) -> Lwt.return @@ `Boundary (pre, post)
+          | None ->
+            begin
+              match find_common line boundary with
+              | Some ("", ambiguous) -> begin
+                Reader.unread reader ambiguous;
+                Reader.read_next reader >>
+                compute_case reader boundary
+              end
+              | Some (unambiguous, ambiguous) -> Lwt.return @@ `May_end_with_boundary (unambiguous, ambiguous)
+              | None -> Lwt.return @@ `App_data line
+            end
+        end
+    end
+
+let iter_part reader boundary callback =
+  let fin = ref false in
+  let last () =
+    fin := true;
+    Lwt.return_unit
+  in
+  let handle ~send ~unread ~finish =
+    let%lwt () = callback send in
+    Reader.unread reader unread;
+    if finish then
+      last ()
+    else
+      Lwt.return_unit
+  in
+  while%lwt not !fin do
+    let%lwt res = compute_case reader boundary in
+    match res with
+    | `Empty -> last ()
+    | `Boundary (pre, post) -> handle ~send:pre ~unread:post ~finish:true
+    | `May_end_with_boundary (unambiguous, ambiguous) -> handle ~send:unambiguous ~unread:ambiguous ~finish:false
+    | `App_data line -> callback line
+  done
+
+let read_file_part reader boundary callback =
+  iter_part reader boundary callback
+
+let strip_crlf s =
+  match ends_with ~suffix:"\r\n" s with
+  | Some (prefix, _) -> prefix
+  | None -> s
+
+let read_string_part reader boundary =
+  let value = ref "" in
+  let%lwt () =
+    iter_part
+      reader
+      boundary
+      (fun line -> Lwt.return (value := !value ^ line))
+  in
+  Lwt.return @@ strip_crlf (!value)
+
+let read_part reader boundary callback fields =
+  let%lwt headers = read_headers reader in
+  let content_disposition = List.assoc "Content-Disposition" headers in
+  let name =
+    match parse_name content_disposition with
+    | Some x -> x
+    | None -> invalid_arg "handle_multipart"
+  in
+  match parse_filename content_disposition with
+  | Some filename -> read_file_part reader boundary (callback ~name ~filename)
+  | None ->
+    let%lwt value = read_string_part reader boundary in
+    fields := (name, value)::!fields;
+    Lwt.return_unit
+  
+let handle_multipart reader boundary callback =
+  let fields = (ref [] : (string * string) list ref) in
+  let%lwt () =
+    let%lwt dummyline = Reader.read_line reader in
+    let fin = ref false in
+    while%lwt not !fin do
+      if%lwt Reader.empty reader then
+        Lwt.return (fin := true)
+      else
+        read_part reader boundary callback fields
+    done
+  in
+  Lwt.return (!fields)
+
+let parse ~stream ~content_type ~callback =
+  let reader = Reader.make stream in
+  let boundary =
+    match extract_boundary content_type with
+    | Some s -> "--" ^ s
+    | None -> invalid_arg "iter_multipart"
+  in
+  handle_multipart reader boundary callback
