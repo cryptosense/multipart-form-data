@@ -1,24 +1,19 @@
 module StringMap = Map.Make(String)
 
-let last_chars s n = String.sub s (String.length s - n) n
+let string_eq ~a ~a_start ~b ~len =
+  let r = ref true in
+  for i = 0 to len - 1 do
+    let a_i = a_start + i in
+    let b_i = i in
+    if a.[a_i] <> b.[b_i] then
+      r := false
+  done;
+  !r
 
-let ends_with ~suffix s =
-  let suffix_length = String.length suffix in
+let ends_with ~suffix ~suffix_length s =
   let s_length = String.length s in
-  if s_length >= suffix_length && last_chars s suffix_length = suffix then
-    let prefix = String.sub s 0 (s_length - suffix_length) in
-    Some (prefix, suffix)
-  else
-    None
-
-let prefixes s =
-  let rec go i =
-    if i <= 0 then
-      []
-    else
-      (String.sub s 0 i)::go (i-1)
-  in
-  go (String.length s)
+  (s_length >= suffix_length) &&
+  (string_eq ~a:s ~a_start:(s_length - suffix_length) ~b:suffix ~len:suffix_length)
 
 let rec first_matching p = function
   | [] -> None
@@ -33,11 +28,19 @@ let option_map f = function
   | None -> None
   | Some x -> Some (f x)
 
-let find_common a b =
-  let p suffix =
-    ends_with ~suffix a
+let find_common_idx a b =
+  let rec go i =
+    if i <= 0 then
+      None
+    else
+      begin
+        if ends_with ~suffix:b ~suffix_length:i a then
+          Some (String.length a - i)
+        else
+          go (i - 1)
+      end
   in
-  first_matching p @@ prefixes b
+  go (String.length b)
 
 let word = function
   | "" -> []
@@ -82,10 +85,12 @@ let split s boundary =
       | Some x -> x ^ c0
       | None -> c0
     in
-    let string_to_process = match find_common c boundary with
+    let string_to_process = match find_common_idx c boundary with
     | None -> c
-    | Some (prefix, suffix) ->
+    | Some idx ->
       begin
+        let prefix = String.sub c 0 idx in
+        let suffix = String.sub c idx (String.length c - idx) in
         push suffix;
         prefix
       end
@@ -230,6 +235,12 @@ let get_parts s =
   in
   Lwt_stream.fold_s go s StringMap.empty
 
+let concat a b =
+  match (a, b) with
+  | (_, "") -> a
+  | ("", _) -> b
+  | _ -> a ^ b
+
 module Reader = struct
   type t =
     { mutable buffer : string
@@ -242,17 +253,17 @@ module Reader = struct
     }
 
   let unread r s =
-    r.buffer <- s ^ r.buffer
+    r.buffer <- concat s r.buffer
 
   let empty r =
-    if r.buffer <> "" then
-      Lwt.return false
-    else
+    if r.buffer = "" then
       Lwt_stream.is_empty r.source
+    else
+      Lwt.return false
 
   let read_next r =
     let%lwt next_chunk = Lwt_stream.next r.source in
-    r.buffer <- r.buffer ^ next_chunk;
+    r.buffer <- concat r.buffer next_chunk;
     Lwt.return_unit
 
   let read_chunk r =
@@ -319,13 +330,17 @@ let rec compute_case reader boundary =
           | Some (pre, post) -> Lwt.return @@ `Boundary (pre, post)
           | None ->
             begin
-              match find_common line boundary with
-              | Some ("", ambiguous) -> begin
-                Reader.unread reader ambiguous;
+              match find_common_idx line boundary with
+              | Some 0 ->
+                begin
+                Reader.unread reader line;
                 Reader.read_next reader >>
                 compute_case reader boundary
-              end
-              | Some (unambiguous, ambiguous) -> Lwt.return @@ `May_end_with_boundary (unambiguous, ambiguous)
+                end
+              | Some amb_idx ->
+                let unambiguous = String.sub line 0 amb_idx in
+                let ambiguous = String.sub line amb_idx (String.length line - amb_idx) in
+                Lwt.return @@ `May_end_with_boundary (unambiguous, ambiguous)
               | None -> Lwt.return @@ `App_data line
             end
         end
@@ -358,19 +373,16 @@ let read_file_part reader boundary callback =
   iter_part reader boundary callback
 
 let strip_crlf s =
-  match ends_with ~suffix:"\r\n" s with
-  | Some (prefix, _) -> prefix
-  | None -> s
+  if ends_with ~suffix:"\r\n" ~suffix_length:2 s then
+    String.sub s 0 (String.length s - 2)
+  else
+    s
 
 let read_string_part reader boundary =
-  let value = ref "" in
-  let%lwt () =
-    iter_part
-      reader
-      boundary
-      (fun line -> Lwt.return (value := !value ^ line))
-  in
-  Lwt.return @@ strip_crlf (!value)
+  let value = Buffer.create 0 in
+  let append_to_value line = Lwt.return (Buffer.add_string value line) in
+  iter_part reader boundary append_to_value >>
+  Lwt.return @@ strip_crlf (Buffer.contents value)
 
 let read_part reader boundary callback fields =
   let%lwt headers = read_headers reader in
@@ -386,7 +398,7 @@ let read_part reader boundary callback fields =
     let%lwt value = read_string_part reader boundary in
     fields := (name, value)::!fields;
     Lwt.return_unit
-  
+
 let handle_multipart reader boundary callback =
   let fields = (ref [] : (string * string) list ref) in
   let%lwt () =
