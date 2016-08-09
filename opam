@@ -14,7 +14,7 @@ remove: [make "uninstall"]
 depends: [
   "ocamlfind" {build}
   "ounit" {test}
-  "ppx_deriving"
+  "ppx_deriving" {test}
   "stringext"
   "lwt" {>= "2.5.0"}
 ]

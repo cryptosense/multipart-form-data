@@ -123,7 +123,6 @@ let align stream boundary =
   join @@ split stream boundary
 
 type header = string * string
-  [@@deriving show]
 
 let extract_boundary content_type =
   Stringext.chop_prefix ~prefix:"multipart/form-data; boundary=" content_type
@@ -155,18 +154,6 @@ type stream_part =
   { headers : header list
   ; body : string Lwt_stream.t
   }
-
-let debug_stream_part {body;headers} =
-  let%lwt body_chunks = Lwt_stream.to_list body in
-  Lwt.return @@
-  Printf.sprintf
-    "headers : %s\nbody: %s\n"
-    ([%show: header list] headers)
-    (String.concat "" body_chunks)
-
-let debug_stream sps =
-  let%lwt parts = Lwt_list.map_s debug_stream_part sps in
-  Lwt.return @@ String.concat "--\n" parts
 
 let parse_part chunk_stream =
   let lines = align chunk_stream "\r\n" in

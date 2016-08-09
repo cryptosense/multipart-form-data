@@ -1,6 +1,5 @@
 true: debug
 true: package(stringext)
 true: package(lwt)
-true: package(ppx_deriving.std)
 true: package(lwt.ppx)
-<tests.*>: package(oUnit), package(lwt.unix)
+<tests.*>: package(oUnit), package(lwt.unix), package(ppx_deriving.std)
