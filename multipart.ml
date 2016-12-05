@@ -1,5 +1,3 @@
-module StringMap = Map.Make(String)
-
 let string_eq ~a ~a_start ~b ~len =
   let r = ref true in
   for i = 0 to len - 1 do
@@ -60,70 +58,6 @@ let split_on_string ~pattern s =
   in
   List.rev (go 0 [])
 
-let split_and_process_string ~boundary s =
-  let f = function
-    | None -> `Delim
-    | Some w -> `Word w
-  in
-  List.map f @@ split_on_string ~pattern:boundary s
-
-let split s boundary =
-  let r = ref None in
-  let push v =
-    match !r with
-    | None -> r := Some v
-    | Some _ -> assert false
-  in
-  let pop () =
-    let res = !r in
-    r := None;
-    res
-  in
-  let go c0 =
-    let c =
-      match pop () with
-      | Some x -> x ^ c0
-      | None -> c0
-    in
-    let string_to_process = match find_common_idx c boundary with
-    | None -> c
-    | Some idx ->
-      begin
-        let prefix = String.sub c 0 idx in
-        let suffix = String.sub c idx (String.length c - idx) in
-        push suffix;
-        prefix
-      end
-    in
-    Lwt.return @@ split_and_process_string ~boundary string_to_process
-  in
-  let initial = Lwt_stream.map_list_s go s in
-  let final =
-    Lwt_stream.flatten @@
-    Lwt_stream.from_direct @@ fun () ->
-    option_map (split_and_process_string ~boundary) @@ pop ()
-  in
-  Lwt_stream.append initial final
-
-let until_next_delim s =
-  Lwt_stream.from @@ fun () ->
-  let%lwt res = Lwt_stream.get s in
-  match res with
-  | None
-  | Some `Delim -> Lwt.return_none
-  | Some (`Word w) -> Lwt.return_some w
-
-let join s =
-  Lwt_stream.filter_map (function
-      | `Delim -> Some (until_next_delim @@ Lwt_stream.clone s)
-      | `Word _ -> None
-    ) s
-
-let align stream boundary =
-  join @@ split stream boundary
-
-type header = string * string
-
 let extract_boundary content_type =
   Stringext.chop_prefix ~prefix:"multipart/form-data; boundary=" content_type
 
@@ -135,51 +69,8 @@ let parse_name s =
 
 let parse_header s =
   match Stringext.cut ~on:": " s with
-  | Some (key, value) -> (key, value)
-  | None -> invalid_arg "parse_header"
-
-let non_empty st =
-  let%lwt r = Lwt_stream.to_list @@ Lwt_stream.clone st in
-  Lwt.return (String.concat "" r <> "")
-
-let get_headers : string Lwt_stream.t Lwt_stream.t -> header list Lwt.t
-  = fun lines ->
-  let%lwt header_lines = Lwt_stream.get_while_s non_empty lines in
-  Lwt_list.map_s (fun header_line_stream ->
-      let%lwt parts = Lwt_stream.to_list header_line_stream in
-      Lwt.return @@ parse_header @@ String.concat "" parts
-    ) header_lines
-
-type stream_part =
-  { headers : header list
-  ; body : string Lwt_stream.t
-  }
-
-let parse_part chunk_stream =
-  let lines = align chunk_stream "\r\n" in
-  match%lwt get_headers lines with
-  | [] -> Lwt.return_none
-  | headers ->
-    let body = Lwt_stream.concat @@ Lwt_stream.clone lines in
-    Lwt.return_some { headers ; body }
-
-let parse_stream ~stream ~content_type =
-  match extract_boundary content_type with
-  | None -> Lwt.fail_with "Cannot parse content-type"
-  | Some boundary ->
-    begin
-      let actual_boundary = ("--" ^ boundary) in
-      Lwt.return @@ Lwt_stream.filter_map_s parse_part @@ align stream actual_boundary
-    end
-
-let s_part_body {body} = body
-
-let s_part_name {headers} =
-  match
-    parse_name @@ List.assoc "Content-Disposition" headers
-  with
-  | Some x -> x
-  | None -> invalid_arg "s_part_name"
+  | Some (key, value) -> Lwt.return (key, value)
+  | None -> Lwt.fail_with "Multipart.parse_header"
 
 let parse_filename s =
   let parts = split_on_string s ~pattern:"; " in
@@ -193,34 +84,6 @@ let parse_filename s =
       end
   in
   first_matching f parts
-
-let s_part_filename {headers} =
-  parse_filename @@ List.assoc "Content-Disposition" headers
-
-type file = stream_part
-
-let file_stream = s_part_body
-let file_name = s_part_name
-
-let file_content_type {headers} =
-  List.assoc "Content-Type" headers
-
-let as_part part =
-  match s_part_filename part with
-  | Some filename ->
-      Lwt.return (`File part)
-  | None ->
-    let%lwt chunks = Lwt_stream.to_list part.body in
-    let body = String.concat "" chunks in
-    Lwt.return (`String body)
-
-let get_parts s =
-  let go part m =
-    let name = s_part_name part in
-    let%lwt parsed_part = as_part part in
-    Lwt.return @@ StringMap.add name parsed_part m
-  in
-  Lwt_stream.fold_s go s StringMap.empty
 
 let concat a b =
   match (a, b) with
@@ -299,7 +162,7 @@ let read_headers reader =
     if line = "\r\n" then
       Lwt.return headers
     else
-      let header = parse_header line in
+      let%lwt header = parse_header line in
       go (header::headers)
   in
   go []
@@ -389,7 +252,7 @@ let read_part reader boundary callback fields =
 let handle_multipart reader boundary callback =
   let fields = (ref [] : (string * string) list ref) in
   let%lwt () =
-    let%lwt dummyline = Reader.read_line reader in
+    let%lwt _dummyline = Reader.read_line reader in
     let fin = ref false in
     while%lwt not !fin do
       if%lwt Reader.empty reader then
@@ -402,9 +265,9 @@ let handle_multipart reader boundary callback =
 
 let parse ~stream ~content_type ~callback =
   let reader = Reader.make stream in
-  let boundary =
+  let%lwt boundary =
     match extract_boundary content_type with
-    | Some s -> "--" ^ s
-    | None -> invalid_arg "iter_multipart"
+    | Some s -> Lwt.return ("--" ^ s)
+    | None -> Lwt.fail_with "Multipart.parse: cannot extract boundary"
   in
   handle_multipart reader boundary callback
