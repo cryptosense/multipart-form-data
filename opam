@@ -5,6 +5,7 @@ homepage: "https://github.com/cryptosense/multipart-form-data"
 bug-reports: "https://github.com/cryptosense/multipart-form-data/issues"
 license: "BSD-2"
 dev-repo: "https://github.com/cryptosense/multipart-form-data.git"
+doc: "https://cryptosense.github.io/multipart-form-data/doc"
 build: [
   [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" ]
 ]
