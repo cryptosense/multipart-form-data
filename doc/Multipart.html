@@ -1,0 +1,39 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css">
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+<link rel="Start" href="index.html">
+<link rel="Up" href="index.html">
+<link title="Index of types" rel=Appendix href="index_types.html">
+<link title="Index of values" rel=Appendix href="index_values.html">
+<link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Multipart" rel="Chapter" href="Multipart.html"><title>Multipart</title>
+</head>
+<body>
+<div class="navbar">&nbsp;<a class="up" href="index.html" title="Index">Up</a>
+&nbsp;</div>
+<h1>Module <a href="type_Multipart.html">Multipart</a></h1>
+
+<pre><span class="keyword">module</span> Multipart: <code class="code"><span class="keyword">sig</span></code> <a href="Multipart.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info module top">
+Align a stream on a particular sequence and remove these boundaries.<br>
+</div>
+<hr width="100%">
+
+<pre><span id="VALalign"><span class="keyword">val</span> align</span> : <code class="type">string Lwt_stream.t -> string -> string Lwt_stream.t Lwt_stream.t</code></pre>
+<pre><span id="TYPEstream_part"><span class="keyword">type</span> <code class="type"></code>stream_part</span> </pre>
+
+
+<pre><span id="VALs_part_name"><span class="keyword">val</span> s_part_name</span> : <code class="type"><a href="Multipart.html#TYPEstream_part">stream_part</a> -> string</code></pre>
+<pre><span id="VALs_part_body"><span class="keyword">val</span> s_part_body</span> : <code class="type"><a href="Multipart.html#TYPEstream_part">stream_part</a> -> string Lwt_stream.t</code></pre>
+<pre><span id="VALs_part_filename"><span class="keyword">val</span> s_part_filename</span> : <code class="type"><a href="Multipart.html#TYPEstream_part">stream_part</a> -> string option</code></pre>
+<pre><span id="VALparse_stream"><span class="keyword">val</span> parse_stream</span> : <code class="type">stream:string Lwt_stream.t -><br>       content_type:string -> <a href="Multipart.html#TYPEstream_part">stream_part</a> Lwt_stream.t Lwt.t</code></pre>
+<pre><span id="TYPEfile"><span class="keyword">type</span> <code class="type"></code>file</span> </pre>
+
+
+<pre><span id="VALfile_name"><span class="keyword">val</span> file_name</span> : <code class="type"><a href="Multipart.html#TYPEfile">file</a> -> string</code></pre>
+<pre><span id="VALfile_content_type"><span class="keyword">val</span> file_content_type</span> : <code class="type"><a href="Multipart.html#TYPEfile">file</a> -> string</code></pre>
+<pre><span id="VALfile_stream"><span class="keyword">val</span> file_stream</span> : <code class="type"><a href="Multipart.html#TYPEfile">file</a> -> string Lwt_stream.t</code></pre>
+<pre><span class="keyword">module</span> <a href="Multipart.StringMap.html">StringMap</a>: <code class="type">Map.S</code><code class="type">  with type key = string</code></pre>
+<pre><span id="VALget_parts"><span class="keyword">val</span> get_parts</span> : <code class="type"><a href="Multipart.html#TYPEstream_part">stream_part</a> Lwt_stream.t -><br>       [ `File of <a href="Multipart.html#TYPEfile">file</a> | `String of string ] StringMap.t Lwt.t</code></pre>
+<pre><span id="VALparse"><span class="keyword">val</span> parse</span> : <code class="type">stream:string Lwt_stream.t -><br>       content_type:string -><br>       callback:(name:string -> filename:string -> string -> unit Lwt.t) -><br>       (string * string) list Lwt.t</code></pre></body></html>
