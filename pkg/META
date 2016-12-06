@@ -1,4 +1,4 @@
-version = "0.0.0+dev"
+version = "%%VERSION_NUM%%"
 description = "multipart/form-data parser"
 archive(byte) = "multipart.cma"
 archive(native) = "multipart.cmxa"
