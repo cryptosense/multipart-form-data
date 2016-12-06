@@ -6,12 +6,14 @@ bug-reports: "https://github.com/cryptosense/multipart-form-data/issues"
 license: "BSD-2"
 dev-repo: "https://github.com/cryptosense/multipart-form-data.git"
 build: [
-    [make "build"]
+  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" ]
 ]
-install: [make "install"]
-build-test: [make "check"]
-remove: [make "uninstall"]
+build-test: [
+  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "true" ]
+  [ "ocaml" "pkg/pkg.ml" "test" ]
+]
 depends: [
+  "topkg" {build}
   "ocamlfind" {build}
   "ounit" {test}
   "ppx_deriving" {test}

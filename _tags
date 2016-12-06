@@ -2,4 +2,5 @@ true: debug
 true: package(stringext)
 true: package(lwt)
 true: package(lwt.ppx)
-<tests.*>: package(oUnit), package(lwt.unix), package(ppx_deriving.std)
+<lib>: include
+<test/*>: package(oUnit), package(lwt.unix), package(ppx_deriving.std)
