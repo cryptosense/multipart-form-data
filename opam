@@ -15,7 +15,7 @@ build-test: [
 depends: [
   "topkg" {build}
   "ocamlfind" {build}
-  "ounit" {test}
+  "alcotest" {test}
   "ppx_deriving" {test}
   "stringext"
   "lwt" {>= "2.5.0"}

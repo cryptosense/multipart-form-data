@@ -3,4 +3,4 @@ true: package(stringext)
 true: package(lwt)
 true: package(lwt.ppx)
 <lib>: include
-<test/*>: package(oUnit), package(lwt.unix), package(ppx_deriving.std)
+<test/*>: package(alcotest), package(lwt.unix), package(ppx_deriving.std)
