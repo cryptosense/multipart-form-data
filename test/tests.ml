@@ -1,11 +1,24 @@
-open OUnit2
-
 let get_file name parts =
   match Multipart.StringMap.find name parts with
   | `File file -> file
-  | `String _ -> assert_failure "expected a file"
+  | `String _ -> failwith "expected a file"
 
-let test_parse ctxt =
+module String_or_file = struct
+  type t = [`String of string | `File of Multipart.file]
+
+  let equal = (=)
+
+  let pp fmt (part : t) =
+    let s = match part with
+    | `File _ -> "File _"
+    | `String s -> s
+    in
+    Format.pp_print_string fmt s
+end
+
+let string_or_file = (module String_or_file : Alcotest.TESTABLE with type t = String_or_file.t)
+
+let test_parse () =
   let body =
     String.concat "\r\n"
       [ {|--------------------------1605451f456c9a1a|}
@@ -30,18 +43,18 @@ let test_parse ctxt =
   let thread =
     let%lwt parts_stream = Multipart.parse_stream ~stream ~content_type in
     let%lwt parts = Multipart.get_parts parts_stream in
-    assert_equal (`String "b") (Multipart.StringMap.find "a" parts);
-    assert_equal (`String "d") (Multipart.StringMap.find "c" parts);
+    Alcotest.check string_or_file "'a' value" (`String "b") (Multipart.StringMap.find "a" parts);
+    Alcotest.check string_or_file "'c' value" (`String "d") (Multipart.StringMap.find "c" parts);
     let file = get_file "upload" parts in
-    assert_equal ~ctxt ~printer:[%show: string] "upload" (Multipart.file_name file);
-    assert_equal ~ctxt "application/octet-stream" (Multipart.file_content_type file);
+    Alcotest.check Alcotest.string "filename" "upload" (Multipart.file_name file);
+    Alcotest.check Alcotest.string "content_type" "application/octet-stream" (Multipart.file_content_type file);
     let%lwt file_chunks = Lwt_stream.to_list (Multipart.file_stream file) in
-    assert_equal ~ctxt "testfilecontent" (String.concat "" file_chunks);
+    Alcotest.check Alcotest.string "contents" "testfilecontent" (String.concat "" file_chunks);
     Lwt.return_unit
   in
   Lwt_main.run thread
 
-let tc ctxt content_type chunks expected_parts expected_calls =
+let tc content_type chunks expected_parts expected_calls =
   let stream = Lwt_stream.of_list chunks in
   let calls = ref [] in
   let callback ~name ~filename line =
@@ -49,21 +62,23 @@ let tc ctxt content_type chunks expected_parts expected_calls =
     Lwt.return_unit
   in
   let%lwt parts = Multipart.parse ~stream ~content_type ~callback in
-  assert_equal ~ctxt ~printer:[%show: (string * string) list] expected_parts  parts;
-  assert_equal
-    ~ctxt
-    ~printer:[%show: (string * string * string) list]
-    expected_calls
-     !calls;
+  let string2_list = Alcotest.(list (pair string string)) in
+  let string3_list =
+    let pp fmt x =
+      Format.pp_print_string fmt ([%show: (string * string * string) list] x)
+    in
+    Alcotest.testable pp [%eq: (string * string * string) list]
+  in
+  Alcotest.check string2_list "parts" expected_parts parts;
+  Alcotest.check string3_list "calls" expected_calls !calls;
   Lwt.return_unit
 
-let test_parse_request ctxt =
+let test_parse_request () =
   let cr = "\r" in
   let lf = "\n" in
   let crlf = cr ^ lf in
   let thread =
-    tc ctxt
-      "multipart/form-data; boundary=9219489391874b51bb29b52a10e8baac"
+    tc "multipart/form-data; boundary=9219489391874b51bb29b52a10e8baac"
       ( List.map (String.concat "\n") @@
           [ [ {|--9219489391874b51bb29b52a10e8baac|} ^ cr
             ; {|Content-Disposition: form-data; name="foo"|} ^ cr
@@ -94,7 +109,7 @@ let test_parse_request ctxt =
       ; ("bar", "filename.data", "line5\nline6\n")
       ]
       >>
-    tc ctxt
+    tc
       "multipart/form-data; boundary=9219489391874b51bb29b52a10e8baac"
       (
         [ {|--9219489391874b51bb29b52a10e8baac|} ^ crlf
@@ -110,7 +125,7 @@ let test_parse_request ctxt =
   in
   Lwt_main.run thread
 
-let test_split ctxt =
+let test_split () =
   let in_stream =
     Lwt_stream.of_list
       [ "ABCD"
@@ -134,19 +149,14 @@ let test_split ctxt =
   Lwt_main.run (
     let%lwt streams = Lwt_stream.to_list stream in
     let%lwt result = Lwt_list.map_s Lwt_stream.to_list streams in
-    assert_equal
-      ~ctxt
-      ~printer:[%show: string list list]
-      expected
-      result;
+    Alcotest.check Alcotest.(list (list string)) "contents" expected result;
     Lwt.return_unit
   )
 
-let suite =
-  "multipart-form-data" >:::
-    [ "parse" >:: test_parse
-    ; "parse_request" >:: test_parse_request
-    ; "split" >:: test_split
+let () =
+  Alcotest.run "multipart-form-data" [ ("Multipart",
+    [ "parse", `Quick, test_parse
+    ; "parse_request", `Quick, test_parse_request
+    ; "split", `Quick, test_split
     ]
-
-let _ = run_test_tt_main suite
+  )]
