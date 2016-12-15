@@ -371,7 +371,21 @@ let read_string_part reader boundary =
   iter_part reader boundary append_to_value >>
   Lwt.return @@ strip_crlf (Buffer.contents value)
 
-let read_part reader boundary callback fields =
+type callbacks =
+  { default : name:string -> filename:string -> string -> unit Lwt.t
+  ; named : (string * (string option ref * (string -> unit Lwt.t))) list
+  }
+
+let get_callback name filename callbacks =
+  match List.assoc name callbacks.named with
+  | (filename_ref, named_callback) ->
+    begin
+      filename_ref := Some filename;
+      named_callback
+    end
+  | exception Not_found -> callbacks.default ~name ~filename
+
+let read_part reader boundary callbacks fields =
   let%lwt headers = read_headers reader in
   let content_disposition = List.assoc "Content-Disposition" headers in
   let name =
@@ -380,13 +394,14 @@ let read_part reader boundary callback fields =
     | None -> invalid_arg "handle_multipart"
   in
   match parse_filename content_disposition with
-  | Some filename -> read_file_part reader boundary (callback ~name ~filename)
+  | Some filename ->
+      read_file_part reader boundary @@ get_callback name filename callbacks
   | None ->
     let%lwt value = read_string_part reader boundary in
     fields := (name, value)::!fields;
     Lwt.return_unit
 
-let handle_multipart reader boundary callback =
+let handle_multipart reader boundary callbacks =
   let fields = (ref [] : (string * string) list ref) in
   let%lwt () =
     let%lwt dummyline = Reader.read_line reader in
@@ -395,16 +410,24 @@ let handle_multipart reader boundary callback =
       if%lwt Reader.empty reader then
         Lwt.return (fin := true)
       else
-        read_part reader boundary callback fields
+        read_part reader boundary callbacks fields
     done
   in
   Lwt.return (!fields)
 
-let parse ~stream ~content_type ~callback =
+let ignore_callback ~name ~filename chunk =
+  Lwt.return_unit
+
+let parse ~content_type ?(default_callback=ignore_callback) ?(callbacks=[]) stream =
   let reader = Reader.make stream in
   let boundary =
     match extract_boundary content_type with
     | Some s -> "--" ^ s
     | None -> invalid_arg "iter_multipart"
   in
-  handle_multipart reader boundary callback
+  let callbacks =
+    { default = default_callback
+    ; named = callbacks
+    }
+  in
+  handle_multipart reader boundary callbacks
