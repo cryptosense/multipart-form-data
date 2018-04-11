@@ -16,7 +16,7 @@
    (preprocess
      (pps
        (
-        lwt.ppx
+        lwt_ppx
         )
        )
      )
