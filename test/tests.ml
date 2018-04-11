@@ -58,19 +58,16 @@ let tc content_type chunks expected_parts expected_calls =
   let stream = Lwt_stream.of_list chunks in
   let calls = ref [] in
   let callback ~name ~filename line =
-    calls := !calls @ [(name, filename, line)];
+    calls := !calls @ [((name, filename), line)];
     Lwt.return_unit
   in
   let%lwt parts = Multipart.parse ~stream ~content_type ~callback in
   let string2_list = Alcotest.(list (pair string string)) in
-  let string3_list =
-    let pp fmt x =
-      Format.pp_print_string fmt ([%show: (string * string * string) list] x)
-    in
-    Alcotest.testable pp [%eq: (string * string * string) list]
-  in
+  let string3_list = Alcotest.(list (pair (pair string string) string)) in
   Alcotest.check string2_list "parts" expected_parts parts;
-  Alcotest.check string3_list "calls" expected_calls !calls;
+  Alcotest.check string3_list "calls"
+    (List.map (fun (x, y, z) -> ((x, y), z)) expected_calls)
+    !calls;
   Lwt.return_unit
 
 let test_parse_request () =

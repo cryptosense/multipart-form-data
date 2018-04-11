@@ -17,7 +17,6 @@
      (pps
        (
         lwt.ppx
-        ppx_deriving.std
         )
        )
      )
