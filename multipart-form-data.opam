@@ -18,6 +18,6 @@ depends: [
   "alcotest" {test}
   "ppx_deriving" {test}
   "stringext"
-  "lwt" {>= "2.5.0"}
+  "lwt" {>= "3.1.0" & < "4.0.0"}
 ]
 available: [ocaml-version >= "4.02.0"]
