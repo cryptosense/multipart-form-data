@@ -17,6 +17,7 @@ depends: [
   "ocaml-migrate-parsetree" {build}
   "alcotest" {test}
   "stringext"
-  "lwt" {>= "3.1.0" & < "4.0.0"}
+  "lwt"
+  "lwt_ppx"
 ]
 available: [ocaml-version >= "4.02.0"]
