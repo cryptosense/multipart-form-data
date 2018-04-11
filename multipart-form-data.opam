@@ -6,15 +6,15 @@ bug-reports: "https://github.com/cryptosense/multipart-form-data/issues"
 license: "BSD-2"
 dev-repo: "https://github.com/cryptosense/multipart-form-data.git"
 build: [
-  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" ]
+  ["jbuilder" "subst" "-n" name] {pinned}
+  ["jbuilder" "build" "-p" name "-j" jobs]
 ]
 build-test: [
-  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "true" ]
-  [ "ocaml" "pkg/pkg.ml" "test" ]
+  ["jbuilder" "runtest" "-p" name "-j" jobs]
 ]
 depends: [
-  "topkg" {build}
-  "ocamlfind" {build}
+  "jbuilder" {build}
+  "ocaml-migrate-parsetree" {build}
   "alcotest" {test}
   "ppx_deriving" {test}
   "stringext"

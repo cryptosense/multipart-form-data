@@ -1,0 +1,25 @@
+(alias
+ ((name runtest)
+  (deps (tests.exe))
+  (action (run ${<}))))
+
+(executable
+  (
+   (name tests)
+   (libraries
+     (
+      multipart-form-data
+      alcotest
+      lwt.unix
+      )
+     )
+   (preprocess
+     (pps
+       (
+        lwt.ppx
+        ppx_deriving.std
+        )
+       )
+     )
+   )
+  )

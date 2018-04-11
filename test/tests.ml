@@ -78,8 +78,9 @@ let test_parse_request () =
   let lf = "\n" in
   let crlf = cr ^ lf in
   let thread =
-    tc "multipart/form-data; boundary=9219489391874b51bb29b52a10e8baac"
-      ( List.map (String.concat "\n") @@
+    let%lwt () =
+      tc "multipart/form-data; boundary=9219489391874b51bb29b52a10e8baac"
+        ( List.map (String.concat "\n") @@
           [ [ {|--9219489391874b51bb29b52a10e8baac|} ^ cr
             ; {|Content-Disposition: form-data; name="foo"|} ^ cr
             ; {||} ^ cr
@@ -102,13 +103,13 @@ let test_parse_request () =
             ; {||}
             ]
           ]
-      )
-      [ ("foo", "toto") ]
-      [ ("bar", "filename.data", "line1\nline2\n")
-      ; ("bar", "filename.data", "line3\nline4\n")
-      ; ("bar", "filename.data", "line5\nline6\n")
-      ]
-      >>
+        )
+        [ ("foo", "toto") ]
+        [ ("bar", "filename.data", "line1\nline2\n")
+        ; ("bar", "filename.data", "line3\nline4\n")
+        ; ("bar", "filename.data", "line5\nline6\n")
+        ]
+    in
     tc
       "multipart/form-data; boundary=9219489391874b51bb29b52a10e8baac"
       (
