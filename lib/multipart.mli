@@ -23,22 +23,8 @@ module StringMap : Map.S with type key = string
 
 val get_parts : stream_part Lwt_stream.t -> [`String of string | `File of file] StringMap.t Lwt.t
 
-(** Low level interface.
-
-    To parse only string parts, just call [parse ~content_type body]: it will
-    return an association list.
-
-    To parse a file pass a callback in [callbacks] using the part name, a
-    reference and a function. The reference will be set to the file name, and
-    the function will be called on file chunks to save the file. String parts
-    are returned as an association list.
-
-    When a file part is encountered and no corresponding callback exists, the
-    [default_callback] function is called on every chunk.
-*)
 val parse :
-     content_type:string
-     -> ?default_callback:(name:string -> filename:string -> string -> unit Lwt.t)
-     -> ?callbacks:((string * (string option ref * (string -> unit Lwt.t))) list)
-     -> string Lwt_stream.t
+        stream:string Lwt_stream.t
+     -> content_type:string
+     -> callback:(name:string -> filename:string -> string -> unit Lwt.t)
      -> (string * string) list Lwt.t

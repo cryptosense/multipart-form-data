@@ -54,21 +54,23 @@ let test_parse () =
   in
   Lwt_main.run thread
 
-let tc content_type chunks expected_parts expected_calls expected_filename =
+let tc content_type chunks expected_parts expected_calls =
   let stream = Lwt_stream.of_list chunks in
   let calls = ref [] in
-  let bar_callback line =
-    calls := !calls @ [line];
+  let callback ~name ~filename line =
+    calls := !calls @ [(name, filename, line)];
     Lwt.return_unit
   in
-  let bar_filename = ref None in
-  let%lwt parts =
-    Multipart.parse ~content_type ~callbacks:[("bar", (bar_filename, bar_callback))] stream
-  in
+  let%lwt parts = Multipart.parse ~stream ~content_type ~callback in
   let string2_list = Alcotest.(list (pair string string)) in
+  let string3_list =
+    let pp fmt x =
+      Format.pp_print_string fmt ([%show: (string * string * string) list] x)
+    in
+    Alcotest.testable pp [%eq: (string * string * string) list]
+  in
   Alcotest.check string2_list "parts" expected_parts parts;
-  Alcotest.check Alcotest.(list string) "calls" expected_calls !calls;
-  Alcotest.check Alcotest.(option string) "filename" expected_filename (!bar_filename);
+  Alcotest.check string3_list "calls" expected_calls !calls;
   Lwt.return_unit
 
 let test_parse_request () =
@@ -102,11 +104,10 @@ let test_parse_request () =
           ]
       )
       [ ("foo", "toto") ]
-      [ "line1\nline2\n"
-      ; "line3\nline4\n"
-      ; "line5\nline6\n"
+      [ ("bar", "filename.data", "line1\nline2\n")
+      ; ("bar", "filename.data", "line3\nline4\n")
+      ; ("bar", "filename.data", "line5\nline6\n")
       ]
-      (Some "filename.data")
       >>
     tc
       "multipart/form-data; boundary=9219489391874b51bb29b52a10e8baac"
@@ -121,7 +122,6 @@ let test_parse_request () =
       )
       [ ("foo", "toto") ]
       []
-      None
   in
   Lwt_main.run thread
 
