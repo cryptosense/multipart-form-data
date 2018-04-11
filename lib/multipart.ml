@@ -172,9 +172,9 @@ let parse_stream ~stream ~content_type =
       Lwt.return @@ Lwt_stream.filter_map_s parse_part @@ align stream actual_boundary
     end
 
-let s_part_body {body} = body
+let s_part_body {body; _} = body
 
-let s_part_name {headers} =
+let s_part_name {headers; _} =
   match
     parse_name @@ List.assoc "Content-Disposition" headers
   with
@@ -194,7 +194,7 @@ let parse_filename s =
   in
   first_matching f parts
 
-let s_part_filename {headers} =
+let s_part_filename {headers; _} =
   parse_filename @@ List.assoc "Content-Disposition" headers
 
 type file = stream_part
@@ -202,12 +202,12 @@ type file = stream_part
 let file_stream = s_part_body
 let file_name = s_part_name
 
-let file_content_type {headers} =
+let file_content_type {headers; _} =
   List.assoc "Content-Type" headers
 
 let as_part part =
   match s_part_filename part with
-  | Some filename ->
+  | Some _filename ->
       Lwt.return (`File part)
   | None ->
     let%lwt chunks = Lwt_stream.to_list part.body in
@@ -321,7 +321,7 @@ let rec compute_case reader boundary =
               | Some 0 ->
                 begin
                 Reader.unread reader line;
-                Reader.read_next reader >>
+                let%lwt () = Reader.read_next reader in
                 compute_case reader boundary
                 end
               | Some amb_idx ->
@@ -368,7 +368,7 @@ let strip_crlf s =
 let read_string_part reader boundary =
   let value = Buffer.create 0 in
   let append_to_value line = Lwt.return (Buffer.add_string value line) in
-  iter_part reader boundary append_to_value >>
+  let%lwt () = iter_part reader boundary append_to_value in
   Lwt.return @@ strip_crlf (Buffer.contents value)
 
 let read_part reader boundary callback fields =
@@ -389,7 +389,7 @@ let read_part reader boundary callback fields =
 let handle_multipart reader boundary callback =
   let fields = (ref [] : (string * string) list ref) in
   let%lwt () =
-    let%lwt dummyline = Reader.read_line reader in
+    let%lwt _dummyline = Reader.read_line reader in
     let fin = ref false in
     while%lwt not !fin do
       if%lwt Reader.empty reader then
