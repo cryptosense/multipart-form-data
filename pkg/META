@@ -1,7 +1,0 @@
-version = "0.0.0+dev"
-description = "multipart/form-data parser"
-archive(byte) = "multipart.cma"
-archive(native) = "multipart.cmxa"
-plugin(byte) = "multipart.cma"
-plugin(native) = "multipart.cmxs"
-requires = "lwt str stringext"
