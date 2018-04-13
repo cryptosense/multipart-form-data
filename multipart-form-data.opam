@@ -21,4 +21,3 @@ depends: [
   "lwt"
   "lwt_ppx"
 ]
-available: [ocaml-version >= "4.02.0"]
