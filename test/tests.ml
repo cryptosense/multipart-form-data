@@ -1,3 +1,5 @@
+module Multipart = Multipart_form_data.Multipart
+
 let get_file name parts =
   match Multipart.StringMap.find name parts with
   | `File file -> file
