@@ -1,4 +1,4 @@
-module Multipart = Multipart_form_data.Multipart
+module Multipart = Multipart_form_data
 
 let get_file name parts =
   match Multipart.StringMap.find name parts with
