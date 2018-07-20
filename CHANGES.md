@@ -1,3 +1,10 @@
+Breaking changes:
+
+- `Multipart` module was renamed `Multipart_form_data` to match package name.
+
+Packaging:
+- Port to dune.
+
 v0.2.0 2018-04-11
 =================
 
