@@ -5,5 +5,12 @@
 
 (executable
   (name tests)
-  (libraries multipart-form-data alcotest lwt.unix)
-  (preprocess (pps lwt_ppx)))
+  (libraries
+    multipart-form-data
+    alcotest
+    lwt.unix
+    )
+  (preprocess
+    (pps
+      lwt_ppx
+    )))
