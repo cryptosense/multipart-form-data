@@ -7,14 +7,13 @@ license: "BSD-2"
 dev-repo: "https://github.com/cryptosense/multipart-form-data.git"
 doc: "https://cryptosense.github.io/multipart-form-data/doc"
 build: [
-  ["jbuilder" "subst" "-n" name] {pinned}
-  ["jbuilder" "build" "-p" name "-j" jobs]
+  ["dune" "build" "-p" name "-j" jobs]
 ]
 build-test: [
-  ["jbuilder" "runtest" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs]
 ]
 depends: [
-  "jbuilder" {build}
+  "dune" {build}
   "ocaml-migrate-parsetree" {build}
   "alcotest" {test}
   "stringext"
