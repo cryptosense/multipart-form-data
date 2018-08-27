@@ -1,16 +1,13 @@
-(alias
-  (name runtest)
-  (deps (:tests tests.exe))
-  (action (run %{tests})))
-
-(executable
+(test
   (name tests)
   (libraries
     multipart-form-data
     alcotest
     lwt.unix
-    )
+  )
   (preprocess
     (pps
       lwt_ppx
-    )))
+    )
+  )
+)
