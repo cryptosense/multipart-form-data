@@ -2,12 +2,13 @@ language: c
 sudo: false
 services:
   - docker
-install: wget https://raw.githubusercontent.com/ocaml/ocaml-travisci-skeleton/master/.travis-docker.sh
+install: wget https://raw.githubusercontent.com/ocaml/ocaml-ci-scripts/master/.travis-docker.sh
 script: bash ./.travis-docker.sh
 env:
   global:
     - PACKAGE=multipart-form-data
     - DISTRO=alpine-3.6
+    - OPAM_VERSION=1.2.2
   matrix:
     - OCAML_VERSION=4.02.3
     - OCAML_VERSION=4.03.0
