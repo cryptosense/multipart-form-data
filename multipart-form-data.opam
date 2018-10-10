@@ -1,22 +1,22 @@
-opam-version: "1.2"
+opam-version: "2.0"
 maintainer: "Etienne Millon <etienne@cryptosense.com>"
 authors: "Etienne Millon <etienne@cryptosense.com>"
 homepage: "https://github.com/cryptosense/multipart-form-data"
 bug-reports: "https://github.com/cryptosense/multipart-form-data/issues"
 license: "BSD-2"
-dev-repo: "https://github.com/cryptosense/multipart-form-data.git"
+dev-repo: "git+https://github.com/cryptosense/multipart-form-data.git"
 doc: "https://cryptosense.github.io/multipart-form-data/doc"
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
-build-test: [
+run-test: [
   ["dune" "runtest" "-p" name "-j" jobs]
 ]
 depends: [
+  "alcotest" {with-test}
   "dune" {build}
-  "ocaml-migrate-parsetree" {build}
-  "alcotest" {test}
-  "stringext"
   "lwt"
   "lwt_ppx"
+  "ocaml-migrate-parsetree" {build}
+  "stringext"
 ]
