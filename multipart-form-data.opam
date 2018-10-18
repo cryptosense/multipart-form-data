@@ -20,3 +20,8 @@ depends: [
   "ocaml-migrate-parsetree" {build}
   "stringext"
 ]
+synopsis: "Parser for multipart/form-data (RFC2388)"
+description: """
+This is a parser for structured form data based on `Lwt_stream` in order to use
+it with cohttp. You can use it to send POST parameters.
+"""
