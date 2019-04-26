@@ -86,14 +86,14 @@ let split s boundary =
       | None -> c0
     in
     let string_to_process = match find_common_idx c boundary with
-    | None -> c
-    | Some idx ->
-      begin
-        let prefix = String.sub c 0 idx in
-        let suffix = String.sub c idx (String.length c - idx) in
-        push suffix;
-        prefix
-      end
+      | None -> c
+      | Some idx ->
+        begin
+          let prefix = String.sub c 0 idx in
+          let suffix = String.sub c idx (String.length c - idx) in
+          push suffix;
+          prefix
+        end
     in
     Lwt.return @@ split_and_process_string ~boundary string_to_process
   in
@@ -136,7 +136,7 @@ let parse_name s =
 let parse_header s =
   match Stringext.cut ~on:": " s with
   | Some (key, value) -> (key, value)
-  | None -> invalid_arg "parse_header"
+  | None -> invalid_arg ("Could not parse header :" ^ s)
 
 let non_empty st =
   let%lwt r = Lwt_stream.to_list @@ Lwt_stream.clone st in
@@ -144,11 +144,12 @@ let non_empty st =
 
 let get_headers : string Lwt_stream.t Lwt_stream.t -> header list Lwt.t
   = fun lines ->
-  let%lwt header_lines = Lwt_stream.get_while_s non_empty lines in
-  Lwt_list.map_s (fun header_line_stream ->
-      let%lwt parts = Lwt_stream.to_list header_line_stream in
-      Lwt.return @@ parse_header @@ String.concat "" parts
-    ) header_lines
+    let%lwt header_lines = Lwt_stream.get_while_s non_empty lines in
+    Lwt_list.map_s (fun header_line_stream ->
+        let%lwt parts = Lwt_stream.to_list header_line_stream in
+        Lwt.return @@ parse_header @@ String.concat "" parts
+      )
+      header_lines
 
 type stream_part =
   { headers : header list
@@ -208,7 +209,7 @@ let file_content_type {headers; _} =
 let as_part part =
   match s_part_filename part with
   | Some _filename ->
-      Lwt.return (`File part)
+    Lwt.return (`File part)
   | None ->
     let%lwt chunks = Lwt_stream.to_list part.body in
     let body = String.concat "" chunks in
@@ -293,9 +294,22 @@ module Reader = struct
       end
 end
 
+let read_inital_comments boundary reader =
+ let rec go comments =
+    let%lwt line = Reader.read_line reader in
+    print_endline ("Comment line : " ^ line);
+    if line = boundary ^ "\r\n" then
+      Lwt.return comments
+    else
+      go (comments ^ line)
+  in
+  go ""
+
+
 let read_headers reader =
   let rec go headers =
     let%lwt line = Reader.read_line reader in
+    print_endline ("Header line : " ^ line);
     if line = "\r\n" then
       Lwt.return headers
     else
@@ -309,20 +323,20 @@ let rec compute_case reader boundary =
   | None -> Lwt.return `Empty
   | Some line ->
     begin
-      match Stringext.cut line ~on:(boundary ^ "\r\n") with
+      match Stringext.cut line ~on:("\r\n" ^ boundary ^ "\r\n") with
       | Some (pre, post) -> Lwt.return @@ `Boundary (pre, post)
       | None ->
         begin
-          match Stringext.cut line ~on:(boundary ^ "--\r\n") with
+          match Stringext.cut line ~on:("\r\n" ^ boundary ^ "--\r\n") with
           | Some (pre, post) -> Lwt.return @@ `Boundary (pre, post)
           | None ->
             begin
-              match find_common_idx line boundary with
+              match find_common_idx line ("\r\n" ^ boundary) with
               | Some 0 ->
                 begin
-                Reader.unread reader line;
-                let%lwt () = Reader.read_next reader in
-                compute_case reader boundary
+                  Reader.unread reader line;
+                  let%lwt () = Reader.read_next reader in
+                  compute_case reader boundary
                 end
               | Some amb_idx ->
                 let unambiguous = String.sub line 0 amb_idx in
@@ -359,17 +373,11 @@ let iter_part reader boundary callback =
 let read_file_part reader boundary callback =
   iter_part reader boundary callback
 
-let strip_crlf s =
-  if ends_with ~suffix:"\r\n" ~suffix_length:2 s then
-    String.sub s 0 (String.length s - 2)
-  else
-    s
-
 let read_string_part reader boundary =
   let value = Buffer.create 0 in
   let append_to_value line = Lwt.return (Buffer.add_string value line) in
   let%lwt () = iter_part reader boundary append_to_value in
-  Lwt.return @@ strip_crlf (Buffer.contents value)
+  Lwt.return (Buffer.contents value)
 
 let read_part reader boundary callback fields =
   let%lwt headers = read_headers reader in
@@ -389,7 +397,8 @@ let read_part reader boundary callback fields =
 let handle_multipart reader boundary callback =
   let fields = (ref [] : (string * string) list ref) in
   let%lwt () =
-    let%lwt _dummyline = Reader.read_line reader in
+    let%lwt _comments = read_inital_comments boundary reader in
+    print_endline ("Comments : " ^ _comments);
     let fin = ref false in
     while%lwt not !fin do
       if%lwt Reader.empty reader then
@@ -405,6 +414,6 @@ let parse ~stream ~content_type ~callback =
   let boundary =
     match extract_boundary content_type with
     | Some s -> "--" ^ s
-    | None -> invalid_arg "iter_multipart"
+    | None -> invalid_arg ("Could not extract boundary from Content-Type : " ^ content_type)
   in
   handle_multipart reader boundary callback

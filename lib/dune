@@ -3,6 +3,7 @@
   (public_name multipart-form-data)
   (libraries
     lwt
+    lwt.unix
     stringext
   )
   (preprocess
