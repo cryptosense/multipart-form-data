@@ -15,6 +15,7 @@ run-test: [
 depends: [
   "alcotest" {with-test}
   "dune" {build}
+  "containers"
   "lwt"
   "lwt_ppx"
   "ocaml-migrate-parsetree" {build}

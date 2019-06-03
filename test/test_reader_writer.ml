@@ -11,26 +11,25 @@ let test ~name ~input ~expected_parts =
     in
     let (callback, read) = testable_callback_factory () in
     let result = Multipart_form_data.read ~request ~handle_part:callback in
-    let resulting_parts =
-      read ()
-      |> List.map part_to_testable
-    in
-    let expected_parts =
-      expected_parts
-      |> List.map part_to_testable
-    in
-    Alcotest.(check (result unit string)) (name ^ " result") (Ok ()) result;
+    Alcotest.(check (result unit string)) (name ^ " read result") (Ok ()) result;
+    let resulting_parts = read () in
     Alcotest.(check int)
-      (name ^ " part count")
+      (name ^ " read parts vs expected parts")
       (List.length expected_parts)
       (List.length resulting_parts);
-    Alcotest.(check (list (pair (list string) (option int64))))
-      (name ^ "parts")
-      expected_parts
-      resulting_parts
+    let request =
+      match Multipart_form_data.write_with_separator
+              ~separator
+              ~request:(List.to_seq expected_parts)
+      with
+      | Ok r -> r
+      | Error _ -> empty_request
+    in
+    Alcotest.(check string) (name ^ " body") input (stream_to_string request.body)
   )
 
-let reader_tests =
+
+let read_write_tests =
   [ test
       ~name:"Simple form"
       ~input:("\r\n--" ^ separator
@@ -46,7 +45,7 @@ let reader_tests =
                        ; value = Variable "value"
                        }]
   ; test
-      ~name:"File"
+      ~name:"File from string"
       ~input:("\r\n--" ^ separator
               ^ "\r\n"
               ^ "Content-Disposition: form-data; name=\"filename\"; filename=\"originalname\""
@@ -61,12 +60,11 @@ let reader_tests =
       ~expected_parts:[{ Multipart_form_data.Part.name = "filename"
                        ; value = File { filename = "originalname"
                                       ; content = Lwt_stream.of_list ["this is the content of our file\r\n"]
-                                      ; length = None
+                                      ; length = Some (Int64.of_int 33)
                                       }
                        }]
-
   ; test
-      ~name:"Mixed"
+      ~name:"Mixed variable and file"
       ~input:("\r\n--" ^ separator
               ^ "\r\n"
               ^ "Content-Disposition: form-data; name=\"var1\""
@@ -90,18 +88,17 @@ let reader_tests =
               ^ "--" ^ separator ^ "--"
               ^ "\r\n"
              )
-      ~expected_parts:[ { Multipart_form_data.Part.name = "var2"
-                        ; value = Variable "end===stuff"
+      ~expected_parts:[ { Multipart_form_data.Part.name = "var1"
+                        ; value = Variable "\r\ntest\r\n"
                         }
                       ; { Multipart_form_data.Part.name = "filename"
                         ; value = File { filename = "originalname"
                                        ; content = Lwt_stream.of_list ["this is \r\nthe content of our file\r\n"]
-                                       ; length = None
+                                       ; length = Some (Int64.of_int 35)
                                        }
                         }
-                      ; { Multipart_form_data.Part.name = "var1"
-                        ; value = Variable "\r\ntest\r\n"
+                      ; { Multipart_form_data.Part.name = "var2"
+                        ; value = Variable "end===stuff"
                         }
                       ]
-
   ]

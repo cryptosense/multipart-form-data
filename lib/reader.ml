@@ -295,7 +295,7 @@ module Reader = struct
 end
 
 let read_inital_comments boundary reader =
- let rec go comments =
+  let rec go comments =
     let%lwt line = Reader.read_line reader in
     print_endline ("Comment line : " ^ line);
     if line = boundary ^ "\r\n" then
@@ -347,7 +347,51 @@ let rec compute_case reader boundary =
         end
     end
 
+(**
+ * Read file part
+ * We construct a progressive stream that
+ * gets passed to the callback.
+ **)
 let iter_part reader boundary callback =
+  let fin = ref false in
+  let last () =
+    fin := true;
+    Lwt.return_unit
+  in
+  let handle ~send ~unread ~finish =
+    let%lwt () = callback send finish in
+    Reader.unread reader unread;
+    if finish then
+      last ()
+    else
+      Lwt.return_unit
+  in
+  while%lwt not !fin do
+    let%lwt res = compute_case reader boundary in
+    match res with
+    | `Empty
+      ->
+      last ()
+    | `Boundary (pre, post)
+      ->
+      handle ~send:pre ~unread:post ~finish:true
+    | `May_end_with_boundary (unambiguous, ambiguous)
+      ->
+      handle ~send:unambiguous ~unread:ambiguous ~finish:false
+    | `App_data line
+      ->
+      callback line false
+  done
+
+let read_file_part reader boundary callback =
+  iter_part reader boundary callback
+
+(**
+ * Read string part
+ * We construct a buffer that will contain the entirety of
+ * the value before being passed to the callback.
+ **)
+let iter_string_part reader boundary callback =
   let fin = ref false in
   let last () =
     fin := true;
@@ -364,22 +408,27 @@ let iter_part reader boundary callback =
   while%lwt not !fin do
     let%lwt res = compute_case reader boundary in
     match res with
-    | `Empty -> last ()
-    | `Boundary (pre, post) -> handle ~send:pre ~unread:post ~finish:true
-    | `May_end_with_boundary (unambiguous, ambiguous) -> handle ~send:unambiguous ~unread:ambiguous ~finish:false
-    | `App_data line -> callback line
+    | `Empty
+      ->
+      last ()
+    | `Boundary (pre, post)
+      ->
+      handle ~send:pre ~unread:post ~finish:true
+    | `May_end_with_boundary (unambiguous, ambiguous)
+      ->
+      handle ~send:unambiguous ~unread:ambiguous ~finish:false
+    | `App_data line
+      ->
+      callback line
   done
-
-let read_file_part reader boundary callback =
-  iter_part reader boundary callback
 
 let read_string_part reader boundary =
   let value = Buffer.create 0 in
   let append_to_value line = Lwt.return (Buffer.add_string value line) in
-  let%lwt () = iter_part reader boundary append_to_value in
+  let%lwt () = iter_string_part reader boundary append_to_value in
   Lwt.return (Buffer.contents value)
 
-let read_part reader boundary callback fields =
+let read_part reader boundary variable_callback file_callback =
   let%lwt headers = read_headers reader in
   let content_disposition = List.assoc "Content-Disposition" headers in
   let name =
@@ -388,32 +437,34 @@ let read_part reader boundary callback fields =
     | None -> invalid_arg "handle_multipart"
   in
   match parse_filename content_disposition with
-  | Some filename -> read_file_part reader boundary (callback ~name ~filename)
+  | Some filename -> read_file_part reader boundary (file_callback ~name ~filename)
   | None ->
     let%lwt value = read_string_part reader boundary in
-    fields := (name, value)::!fields;
-    Lwt.return_unit
+    variable_callback ~name ~value
 
-let handle_multipart reader boundary callback =
-  let fields = (ref [] : (string * string) list ref) in
-  let%lwt () =
+let handle_multipart reader boundary variable_callback file_callback =
+  let%lwt read_multipart =
     let%lwt _comments = read_inital_comments boundary reader in
-    print_endline ("Comments : " ^ _comments);
     let fin = ref false in
     while%lwt not !fin do
       if%lwt Reader.empty reader then
         Lwt.return (fin := true)
       else
-        read_part reader boundary callback fields
+        read_part reader boundary variable_callback file_callback
     done
   in
-  Lwt.return (!fields)
+  Lwt.return read_multipart
 
-let parse ~stream ~content_type ~callback =
+let parse ~stream ~content_type ~variable_callback ~file_callback =
   let reader = Reader.make stream in
   let boundary =
     match extract_boundary content_type with
     | Some s -> "--" ^ s
     | None -> invalid_arg ("Could not extract boundary from Content-Type : " ^ content_type)
   in
-  handle_multipart reader boundary callback
+  try
+    handle_multipart reader boundary variable_callback file_callback
+    |> Lwt_main.run
+    |> fun _ -> Ok ()
+  with
+  | Invalid_argument e -> Error e

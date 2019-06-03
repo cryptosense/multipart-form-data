@@ -2,6 +2,7 @@
   (name multipart_form_data)
   (public_name multipart-form-data)
   (libraries
+    containers
     lwt
     lwt.unix
     stringext
