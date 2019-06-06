@@ -156,25 +156,6 @@ type stream_part =
   ; body : string Lwt_stream.t
   }
 
-let parse_part chunk_stream =
-  let lines = align chunk_stream "\r\n" in
-  match%lwt get_headers lines with
-  | [] -> Lwt.return_none
-  | headers ->
-    let body = Lwt_stream.concat @@ Lwt_stream.clone lines in
-    Lwt.return_some { headers ; body }
-
-let parse_stream ~stream ~content_type =
-  match extract_boundary content_type with
-  | None -> Lwt.fail_with "Cannot parse content-type"
-  | Some boundary ->
-    begin
-      let actual_boundary = ("--" ^ boundary) in
-      Lwt.return @@ Lwt_stream.filter_map_s parse_part @@ align stream actual_boundary
-    end
-
-let s_part_body {body; _} = body
-
 let s_part_name {headers; _} =
   match
     parse_name @@ List.assoc "Content-Disposition" headers
@@ -197,14 +178,6 @@ let parse_filename s =
 
 let s_part_filename {headers; _} =
   parse_filename @@ List.assoc "Content-Disposition" headers
-
-type file = stream_part
-
-let file_stream = s_part_body
-let file_name = s_part_name
-
-let file_content_type {headers; _} =
-  List.assoc "Content-Type" headers
 
 let as_part part =
   match s_part_filename part with
@@ -297,7 +270,6 @@ end
 let read_inital_comments boundary reader =
   let rec go comments =
     let%lwt line = Reader.read_line reader in
-    print_endline ("Comment line : " ^ line);
     if line = boundary ^ "\r\n" then
       Lwt.return comments
     else
@@ -309,7 +281,6 @@ let read_inital_comments boundary reader =
 let read_headers reader =
   let rec go headers =
     let%lwt line = Reader.read_line reader in
-    print_endline ("Header line : " ^ line);
     if line = "\r\n" then
       Lwt.return headers
     else
@@ -428,7 +399,7 @@ let read_string_part reader boundary =
   let%lwt () = iter_string_part reader boundary append_to_value in
   Lwt.return (Buffer.contents value)
 
-let read_part reader boundary variable_callback file_callback =
+let read_part reader boundary callback =
   let%lwt headers = read_headers reader in
   let content_disposition = List.assoc "Content-Disposition" headers in
   let name =
@@ -436,13 +407,10 @@ let read_part reader boundary variable_callback file_callback =
     | Some x -> x
     | None -> invalid_arg "handle_multipart"
   in
-  match parse_filename content_disposition with
-  | Some filename -> read_file_part reader boundary (file_callback ~name ~filename)
-  | None ->
-    let%lwt value = read_string_part reader boundary in
-    variable_callback ~name ~value
+  let filename = parse_filename content_disposition in
+  read_file_part reader boundary (callback ~name ~filename)
 
-let handle_multipart reader boundary variable_callback file_callback =
+let handle_multipart reader boundary callback =
   let%lwt read_multipart =
     let%lwt _comments = read_inital_comments boundary reader in
     let fin = ref false in
@@ -450,12 +418,12 @@ let handle_multipart reader boundary variable_callback file_callback =
       if%lwt Reader.empty reader then
         Lwt.return (fin := true)
       else
-        read_part reader boundary variable_callback file_callback
+        read_part reader boundary callback
     done
   in
   Lwt.return read_multipart
 
-let parse ~stream ~content_type ~variable_callback ~file_callback =
+let parse ~stream ~content_type ~callback =
   let reader = Reader.make stream in
   let boundary =
     match extract_boundary content_type with
@@ -463,7 +431,7 @@ let parse ~stream ~content_type ~variable_callback ~file_callback =
     | None -> invalid_arg ("Could not extract boundary from Content-Type : " ^ content_type)
   in
   try
-    handle_multipart reader boundary variable_callback file_callback
+    handle_multipart reader boundary callback
     |> Lwt_main.run
     |> fun _ -> Ok ()
   with

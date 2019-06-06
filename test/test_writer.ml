@@ -1,16 +1,22 @@
-open Utils
+let rec to_seq = function
+    | h::t -> (fun () -> Seq.Cons (h, to_seq t))
+    | [] -> (fun () -> Seq.Nil)
 
 let test ~name ~input ~expected_headers ~expected_body =
   ( name
   , `Quick
   , fun () ->
     let request =
-      match Multipart_form_data.write_with_separator ~separator ~request:(List.to_seq input) with
+      match
+        Multipart_form_data.write_with_boundary
+          ~boundary:Utils.boundary
+          ~request:(to_seq input)
+      with
       | Ok r -> r
-      | Error _ -> empty_request
+      | Error _ -> Utils.empty_request
     in
     Alcotest.(check (list (pair string string))) (name ^ " headers") expected_headers request.headers;
-    Alcotest.(check string) (name ^ " body") expected_body (stream_to_string request.body)
+    Alcotest.(check string) (name ^ " body") expected_body (Utils.stream_to_string request.body)
   )
 
 let writer_tests =
@@ -18,85 +24,111 @@ let writer_tests =
       ~name:"Empty"
       ~input:[]
       ~expected_headers:
-        [ ("Content-Type", "multipart/form-data; boundary=" ^ separator)
+        [ ("Content-Type", "multipart/form-data; boundary=" ^ Utils.boundary)
         ; ("Content-Length", "33")
         ]
-      ~expected_body:("\r\n--" ^ separator ^ "--\r\n")
+      ~expected_body:("\r\n--" ^ Utils.boundary ^ "--\r\n")
   ; test
       ~name:"Simple form"
-      ~input:[{ Multipart_form_data.Part.name = "key"
-              ; value = Variable "value"
-              }]
-      ~expected_headers:[("Content-Type", "multipart/form-data; boundary=" ^ separator);
-                         ("Content-Length", "110")]
-      ~expected_body:("\r\n--" ^ separator
-                      ^ "\r\n"
-                      ^ "Content-Disposition: form-data; name=\"key\""
-                      ^ "\r\n" ^ "\r\n"
-                      ^ "value"
-                      ^ "\r\n"
-                      ^ "--" ^ separator ^ "--"
-                      ^ "\r\n"
-                     )
+      ~input:
+        [ { Multipart_form_data.Part.name = "key"
+          ; content = Lwt_stream.of_list [ "value" ]
+          ; content_length = Some (Int64.of_int 5)
+          ; filename = None
+          }
+        ]
+      ~expected_headers:
+        [ ("Content-Type", "multipart/form-data; boundary=" ^ Utils.boundary);
+          ("Content-Length", "115")
+        ]
+      ~expected_body:
+        (Printf.sprintf
+           "\
+            \r\n\
+            --%s\r\n\
+            Content-Disposition: form-data; name=\"key\"\r\n\
+            \r\n\
+            value\r\n\
+            --%s--\r\n\
+           "
+           Utils.boundary
+           Utils.boundary
+        )
   ; test
       ~name:"File from string"
-      ~input:[{ Multipart_form_data.Part.name = "filename"
-              ; value = File { filename = "originalname"
-                             ; content = Lwt_stream.of_list ["this is the content of our file\r\n"]
-                             ; length = Some (Int64.of_int 33)
-                             }
-              }]
-      ~expected_headers:[("Content-Type", "multipart/form-data; boundary=" ^ separator);
-                         ("Content-Length", "213")]
-      ~expected_body:("\r\n--" ^ separator
-                      ^ "\r\n"
-                      ^ "Content-Disposition: form-data; name=\"filename\"; filename=\"originalname\""
-                      ^ "\r\n"
-                      ^ "Content-Type: application/octet-stream"
-                      ^ "\r\n" ^ "\r\n"
-                      ^ "this is the content of our file\r\n"
-                      ^ "\r\n"
-                      ^ "--" ^ separator ^ "--"
-                      ^ "\r\n"
-                     )
+      ~input:
+        [ { Multipart_form_data.Part.name = "filename"
+          ; filename = Some "originalname"
+          ; content = Lwt_stream.of_list ["this is the content of our file\r\n"]
+          ; content_length = Some (Int64.of_int 33)
+          }
+        ]
+      ~expected_headers:
+        [ ("Content-Type", "multipart/form-data; boundary=" ^ Utils.boundary);
+          ("Content-Length", "213")
+        ]
+      ~expected_body:
+        (Printf.sprintf
+           "\
+             \r\n\
+             --%s\r\n\
+             Content-Disposition: form-data; name=\"filename\"; filename=\"originalname\"\r\n\
+             Content-Type: application/octet-stream\r\n\
+             \r\n\
+             this is the content of our file\r\n\
+             \r\n\
+             --%s--\r\n\
+           "
+           Utils.boundary
+           Utils.boundary
+        )
   ; test
       ~name:"Mixed variable and file"
-      ~input:[ { Multipart_form_data.Part.name = "var1"
-               ; value = Variable "\r\ntest\r\n"
-               }
-             ; { Multipart_form_data.Part.name = "filename"
-               ; value = File { filename = "originalname"
-                              ; content = Lwt_stream.of_list ["this is \r\nthe content of our file\r\n"]
-                              ; length = Some (Int64.of_int 35)
-                              }
-               }
-             ; { Multipart_form_data.Part.name = "var2"
-               ; value = Variable "end===stuff"
-               }
-             ]
-      ~expected_headers:[("Content-Type", "multipart/form-data; boundary=" ^ separator);
-                         ("Content-Length", "371")]
-      ~expected_body:("\r\n--" ^ separator
-                      ^ "\r\n"
-                      ^ "Content-Disposition: form-data; name=\"var1\""
-                      ^ "\r\n" ^ "\r\n"
-                      ^ "\r\ntest\r\n"
-                      ^ "\r\n"
-                      ^ "--" ^ separator
-                      ^ "\r\n"
-                      ^ "Content-Disposition: form-data; name=\"filename\"; filename=\"originalname\""
-                      ^ "\r\n"
-                      ^ "Content-Type: application/octet-stream"
-                      ^ "\r\n" ^ "\r\n"
-                      ^ "this is \r\nthe content of our file\r\n"
-                      ^ "\r\n"
-                      ^ "--" ^ separator
-                      ^ "\r\n"
-                      ^ "Content-Disposition: form-data; name=\"var2\""
-                      ^ "\r\n" ^ "\r\n"
-                      ^ "end===stuff"
-                      ^ "\r\n"
-                      ^ "--" ^ separator ^ "--"
-                      ^ "\r\n"
-                     )
+      ~input:
+        [ { Multipart_form_data.Part.name = "var1"
+          ; content = Lwt_stream.of_list [ "\r\ntest\r\n" ]
+          ; content_length = Some (Int64.of_int 8)
+          ; filename = None
+          }
+        ; { Multipart_form_data.Part.name = "filename"
+          ; filename = Some "originalname"
+          ; content = Lwt_stream.of_list ["this is \r\nthe content of our file\r\n"]
+          ; content_length = Some (Int64.of_int 38)
+          }
+        ; { Multipart_form_data.Part.name = "var2"
+          ; content = Lwt_stream.of_list [ "end===stuff" ]
+          ; content_length = Some (Int64.of_int 11)
+          ; filename = None
+          }
+        ]
+      ~expected_headers:
+        [ ("Content-Type", "multipart/form-data; boundary=" ^ Utils.boundary);
+          ("Content-Length", "393")
+        ]
+      ~expected_body:
+        (Printf.sprintf
+           "\
+            \r\n\
+            --%s\r\n\
+            Content-Disposition: form-data; name=\"var1\"\r\n\
+            \r\n\
+            \r\ntest\r\n\r\n\
+            --%s\r\n\
+            Content-Disposition: form-data; name=\"filename\"; filename=\"originalname\"\
+            \r\n\
+            Content-Type: application/octet-stream\r\n\
+            \r\n\
+            this is \r\nthe content of our file\r\n\r\n\
+            --%s\r\n\
+            Content-Disposition: form-data; name=\"var2\"\r\n\
+            \r\n\
+            end===stuff\r\n\
+            --%s--\
+            \r\n\
+           "
+           Utils.boundary
+           Utils.boundary
+           Utils.boundary
+           Utils.boundary
+        )
   ]
