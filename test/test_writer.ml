@@ -8,9 +8,9 @@ let test ~name ~input ~expected_headers ~expected_body =
   , fun () ->
     let request =
       match
-        Multipart_form_data.write_with_boundary
+        Multipart_form_data.write
           ~boundary:Utils.boundary
-          ~request:(to_seq input)
+          ~parts:(to_seq input)
       with
       | Ok r -> r
       | Error _ -> Utils.empty_request

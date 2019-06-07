@@ -20,9 +20,9 @@ let test ~name ~input ~expected_parts =
       (List.length expected_parts)
       (List.length resulting_parts);
     let request =
-      match Multipart_form_data.write_with_boundary
+      match Multipart_form_data.write
               ~boundary:Utils.boundary
-              ~request:(to_seq expected_parts)
+              ~parts:(to_seq expected_parts)
       with
       | Ok r -> r
       | Error _ -> Utils.empty_request

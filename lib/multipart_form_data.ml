@@ -106,13 +106,21 @@ let add_part_to_multipart_request multipart_request part =
     Writer.add_from_stream ~name ~filename ~content ~content_length multipart_request
 
 
-let write_with_boundary ~boundary ~request =
+let write ?boundary ~parts =
+  let boundary =
+    match boundary with
+    | Some b -> b
+    | None ->
+      (* It does not matter if the random numbers are not safe here *)
+      Random.self_init ();
+      "-----------------" ^ (string_of_int (Random.int 536870912))
+  in
   let open CCResult.Infix in
   let multipart_request =
     Seq.fold_left
       add_part_to_multipart_request
       (Writer.init boundary)
-      request
+      parts
   in
   Writer.r_headers multipart_request
   >>= fun headers -> Writer.r_body multipart_request
@@ -121,8 +129,3 @@ let write_with_boundary ~boundary ~request =
   ; body = body
   }
 
-let write ~request =
-  Random.self_init ();
-  (* It does not matter if the random numbers are not safe here *)
-  let boundary = "-----------------" ^ (string_of_int (Random.int 536870912)) in
-  write_with_boundary ~boundary ~request

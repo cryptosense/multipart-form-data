@@ -19,11 +19,7 @@ val read :
   -> handle_part:(Part.t -> unit Lwt.t)
   -> (unit, string) result
 
-val write_with_boundary :
-  boundary:string
-  -> request:Part.t Seq.t
-  -> (Request.t, string) result
-
 val write :
-  request:Part.t Seq.t
+  ?boundary:string
+  -> parts:Part.t Seq.t
   -> (Request.t, string) result
