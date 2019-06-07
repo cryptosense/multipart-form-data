@@ -19,18 +19,6 @@ let init separator =
   ; separator = separator
   }
 
-let add_from_string ~name ~filename ~content mp =
-  let open MultipartRequest in
-  { mp with
-    elements =
-      { content = Lwt_stream.of_list [ content ]
-      ; name=name
-      ; filename=filename
-      ; length=Int64.of_int(String.length content)
-      }
-      :: mp.elements
-  }
-
 let add_from_stream ~name ~filename ~content ~content_length mp =
   let open MultipartRequest in
   { mp with
