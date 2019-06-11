@@ -4,8 +4,51 @@ multipart/form-data (RFC2388) parser for OCaml
  [![Build Status](https://travis-ci.org/cryptosense/multipart-form-data.svg?branch=master)](https://travis-ci.org/cryptosense/multipart-form-data) [![docs](https://img.shields.io/badge/doc-online-blue.svg)](https://cryptosense.github.io/multipart-form-data/doc/)
 
 This is a parser for structured form data based on `Lwt_stream` in order to use
-it with [cohttp](https://github.com/mirage/ocaml-cohttp/). You can use it to
-receive and send POST parameters.
+it with [cohttp](https://github.com/mirage/ocaml-cohttp/). You can use it to read POST parameters from a given body or generate a new body containing specified parameters.
+
+# File system
+
+This library does not interact with the file system, but can easily be used to upload large files without a significant RAM impact.
+
+Example of chunked reads from the filesystem :
+```ocaml
+let file_size path =
+  path
+  |> Lwt_io.file_length
+  |> Lwt_result.ok
+
+let open_file path =
+  (* This function returns a buffered IO read of a file *)
+  let open Lwt.Infix in
+  let read_while_not_empty channel () =
+    (Lwt_io.read ~count:4096 channel)
+    >|= (fun chunck ->
+        match chunck with
+        | "" -> None
+        | _ -> Some chunck
+      )
+  in
+  path
+  |> Lwt_io.open_file ~mode:Lwt_io.Input
+  >|= read_while_not_empty
+  >|= Lwt_stream.from
+  >>= fun file_stream -> file_size path
+  >|= fun file_size ->
+  match file_size with
+  | Ok file_size -> Ok (file_stream, file_size)
+  | Error err -> Error err
+
+let part_from_file path =
+    let open Lwt_result.Infix in
+    open_file path
+    >|= fun (file_stream, file_size) -> 
+        Seq.return
+            { Multipart_form_data.Part.name = "file"
+            ; filename = "filename"
+            ; content = content
+            ; content_length = content_length
+            }
+```
 
 # Cohttp
 
