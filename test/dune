@@ -4,6 +4,7 @@
     multipart-form-data
     alcotest
     lwt.unix
+    seq
   )
   (preprocess
     (pps
