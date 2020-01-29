@@ -1,25 +1,20 @@
-Breaking changes:
+# Change Log
 
-- `Multipart` module was renamed `Multipart_form_data` to match package name.
+## Unreleased
 
-Packaging:
-- Port to dune.
+* Breaking changes:
+  * `Multipart` module was renamed `Multipart_form_data` to match package name (#24).
+* Port to Dune (#24).
+* Use Opam 2 (#26).
 
-v0.2.0 2018-04-11
-=================
+## 0.2.0 - 2018-04-11
 
-Compatibility:
+* Port to jbuilder (#18).
+* CI improvements (#19):
+  * Use travis-docker.
+  * Add 4.05 + 4.06 builds.
+* Use the standalone `lwt_ppx` for compatibility with `lwt >= 4.0.0` (#20).
 
-- Use the standalone `lwt_ppx` for compatibility with `lwt >= 4.0.0` (#20).
-
-Packaging:
-
-- Port to jbuilder. (#18)
-- CI improvements: (#19)
-  + use travis-docker
-  + add 4.05 + 4.06 builds
-
-v0.1.0 2016-12-06
-=================
+## 0.1.0 - 2016-12-06
 
 Initial release.
