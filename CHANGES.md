@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased
+## 0.3.0 - 2020-02-03
 
 * Breaking changes:
   * `Multipart` module was renamed `Multipart_form_data` to match package name (#24).
