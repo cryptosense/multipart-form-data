@@ -35,6 +35,24 @@ let test_parse () =
       ; {||}
       ; {|testfilecontent|}
       ; {||}
+      ; {|--------------------------1605451f456c9a1a|}
+      ; {|Content-Disposition: form-data; name="upload2"; filename="binary"|}
+      ; {|Content-Type: application/octet-stream|}
+      ; {||}
+      ; {|aωb|}
+      ; {||}
+      ; {|--------------------------1605451f456c9a1a|}
+      ; {|Content-Disposition: form-data; name="upload3"; filename="a.html"|}
+      ; {|Content-Type: text/html|}
+      ; {||}
+      ; {|<!DOCTYPE html><title>Content of a.html.</title>|}
+      ; {||}
+      ; {|--------------------------1605451f456c9a1a|}
+      ; {|Content-Disposition: form-data; name="upload4"; filename="a.txt"|}
+      ; {|Content-Type: text/plain|}
+      ; {||}
+      ; {|Content of a.txt.|}
+      ; {||}
       ; {|--------------------------1605451f456c9a1a--|}
       ]
   in
@@ -50,6 +68,22 @@ let test_parse () =
     Alcotest.check Alcotest.string "content_type" "application/octet-stream" (Multipart_form_data.file_content_type file);
     let%lwt file_chunks = Lwt_stream.to_list (Multipart_form_data.file_stream file) in
     Alcotest.check Alcotest.string "contents" "testfilecontent" (String.concat "" file_chunks);
+    let file = get_file "upload2" parts in
+    Alcotest.check Alcotest.string "filename" "upload2" (Multipart_form_data.file_name file);
+    Alcotest.check Alcotest.string "content_type" "application/octet-stream" (Multipart_form_data.file_content_type file);
+    let%lwt file_chunks = Lwt_stream.to_list (Multipart_form_data.file_stream file) in
+    Alcotest.check Alcotest.string "contents" "aωb" (String.concat "" file_chunks);
+    let file = get_file "upload3" parts in
+    Alcotest.check Alcotest.string "filename" "upload3" (Multipart_form_data.file_name file);
+    Alcotest.check Alcotest.string "content_type" "text/html" (Multipart_form_data.file_content_type file);
+    let%lwt file_chunks = Lwt_stream.to_list (Multipart_form_data.file_stream file) in
+    Alcotest.check Alcotest.string "contents" "<!DOCTYPE html><title>Content of a.html.</title>" (String.concat "" file_chunks);
+    let file = get_file "upload4" parts in
+    Alcotest.check Alcotest.string "filename" "upload4" (Multipart_form_data.file_name file);
+    Alcotest.check Alcotest.string "content_type" "text/plain" (Multipart_form_data.file_content_type file);
+    let%lwt file_chunks = Lwt_stream.to_list (Multipart_form_data.file_stream file) in
+    Alcotest.check Alcotest.string "contents" "Content of a.txt." (String.concat "" file_chunks);
+
     Lwt.return_unit
   in
   Lwt_main.run thread
@@ -83,6 +117,10 @@ let test_parse_request () =
             ; {||} ^ cr
             ; {|toto|} ^ cr
             ; {|--9219489391874b51bb29b52a10e8baac|} ^ cr
+            ; {|Content-Disposition: form-data; name="foo"|} ^ cr
+            ; {||} ^ cr
+            ; {|toto2|} ^ cr
+            ; {|--9219489391874b51bb29b52a10e8baac|} ^ cr
             ; {|Content-Disposition: form-data; name="bar"; filename="filename.data"|} ^ cr
             ; {|Content-Type: application/octet-stream|} ^ cr
             ; {||} ^ cr
@@ -101,7 +139,7 @@ let test_parse_request () =
             ]
           ]
         )
-        [ ("foo", "toto") ]
+        [ ("foo", "toto2"); ("foo", "toto")]
         [ ("bar", "filename.data", "line1\nline2\n")
         ; ("bar", "filename.data", "line3\nline4\n")
         ; ("bar", "filename.data", "line5\nline6\n")
